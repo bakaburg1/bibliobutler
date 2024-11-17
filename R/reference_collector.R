@@ -26,3 +26,158 @@ collect_references <- function(source, query, limit = 100) {
     doi = character(0)
   )
 }
+
+
+#' Convert between DOIs, PMIDs, PMCIDs, and OpenAlex IDs
+#'
+#' This function converts a list of DOIs, PMIDs, PMCIDs, or OpenAlex IDs to a
+#' specified format using the OpenAlex API. It processes IDs in batches to
+#' comply with API limitations and supports parallel processing.
+#'
+#' @param ids A character vector of DOIs, PMIDs, PMCIDs, or OpenAlex IDs to
+#'   convert.
+#' @param to A character string specifying the desired output format: "pmid",
+#'   "doi", "pmcid", or "openalex". If NULL, the function will attempt to
+#'   determine the conversion direction, defaulting to "doi" if no DOIs are
+#'   present and "pmid" if some DOIs but no PMIDs are present.
+#' @param keep_failed_conversions A logical value. If TRUE, the function will
+#'   keep the original ID when conversion fails, instead of returning NA.
+#'   Default is FALSE.
+#'
+#' @return A named character vector with the converted IDs. Names are the input
+#'   IDs, and values are the corresponding converted IDs (or original IDs if
+#'   keep_failed_conversions is TRUE and conversion fails).
+#'
+#' @examples
+#' \dontrun{
+#' # Convert mixed IDs to DOIs
+#' ids <- c("10.1016/s0140-6736(06)68853-3", "16950365", "PMC5815332")
+#' dois <- convert_article_id(ids, to = "doi")
+#'
+#' # Convert DOIs to PMIDs, keeping original if conversion fails
+#' dois <- c("10.1016/s0140-6736(06)68853-3", "10.1111/j.1469-0691.2007.01724.x")
+#' pmids <- convert_article_id(dois, to = "pmid", keep_failed_conversions = TRUE)
+#' }
+#' 
+#' @importFrom dplyr mutate group_split bind_rows n coalesce
+#'
+#' @export
+convert_article_id <- function(
+    ids,
+    to = NULL,
+    keep_failed_conversions = FALSE
+) {
+  # Validate conversion direction
+  valid_formats <- c("pmid", "doi", "pmcid", "openalex", "semanticscholar")
+
+  if (!is.null(to) && !to %in% valid_formats) {
+    stop(
+      "Invalid conversion direction. Use ",
+      stringr::str_flatten(valid_formats, collapse = ", ", last = ", or "),
+      " as the 'to' argument."
+    )
+  }
+
+  # If all inputs are NA, return immediately
+  if (all(is.na(ids))) {
+    return(ids)
+  }
+
+  ids <- as.character(ids)
+  names(ids) <- ids
+
+  # Only process non-NA ids
+  ids_no_missings <- ids[!is.na(ids)]
+
+  # Determine the type of each ID
+  id_types <- get_article_id_type(ids_no_missings)
+
+  if (any(is.na(id_types))) {
+    stop(
+      "Some input IDs are not recognized as DOIs, PMIDs, PMCIDs, ",
+      "Semantic Scholar, or OpenAlex IDs."
+    )
+  }
+
+  # Determine conversion direction if not specified
+  if (is.null(to)) {
+    if (!"doi" %in% id_types) {
+      message("The 'to' argument is not specified. Converting to DOIs.")
+      to <- "doi"
+    } else if (!"pmid" %in% id_types) {
+      message("The 'to' argument is not specified. Converting to PMIDs.")
+      to <- "pmid"
+    } else {
+      stop(
+        "Cannot determine the conversion direction. ",
+        "Please specify 'to' argument."
+      )
+    }
+  }
+
+  # Create a data frame with all IDs, their types, and batch numbers
+  all_ids_df <- data.frame(
+    id = ids_no_missings,
+    type = id_types
+  ) |> mutate(
+    batch = ceiling(seq_len(n()) / 50),
+    .by = type
+  ) |> group_split(type, batch)
+
+  # Process all IDs in a single future_map call
+  results <- furrr::future_map(
+    all_ids_df, \(group) {
+      id_type <- unique(group$type)
+      batch_ids <- group$id
+
+      # Return IDs that are already in the target format
+      if (id_type == to) {
+        return(data.frame(original_id = batch_ids, converted_id = batch_ids))
+      }
+
+      # Construct the OpenAlex API filter parameter
+      filter_param <- paste0(id_type, ":", paste(
+        if (id_type == "pmcid") {
+          stringr::str_remove(batch_ids, "^PMC")
+        } else batch_ids,
+        collapse = "|"
+      ))
+
+      # Get the ids using the OpenAlex API
+      api_results <- get_openalex_article(
+        filter_query = filter_param, select = "ids")
+
+      # Process the results
+      converted_ids <- api_results$.ids[[to]]
+      original_ids <- api_results$.ids[[id_type]]
+
+      # Mark as NF ids not mapping to any article in the openalex database
+      missing_ids <- setdiff(batch_ids, original_ids)
+      if (length(missing_ids) > 0) {
+        converted_ids <- c(converted_ids, rep("NF", length(missing_ids)))
+        original_ids <- c(original_ids, missing_ids)
+      }
+
+      data.frame(original_id = original_ids, converted_id = converted_ids)
+    }) |> bind_rows()
+
+  # Create the final result as a named vector, preserving original NAs and order
+  result <- ids
+
+  # Get non-NA ids
+  valid_ids <- ids[!is.na(ids)]
+
+  # Match original ids to results
+  id_matches <- match(valid_ids, results$original_id)
+
+  # Update result vector with converted ids
+  result[!is.na(ids)] <- results$converted_id[id_matches]
+  names(result) <- ids  # Ensure names match input exactly
+
+  # Replace non-NA values with original ids if keep_failed_conversions is TRUE
+  if (keep_failed_conversions) {
+    result <- dplyr::coalesce(result, ids)
+  }
+
+  return(result)
+}
