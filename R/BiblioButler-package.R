@@ -12,6 +12,16 @@
 #'
 #' @name BiblioButler-package
 #'
+#' @import dplyr
+#'
 #' @keywords internal
 "_PACKAGE"
 NULL
+
+.onLoad <- function(libname, pkgname) {
+  options(
+    bibliobutler_terminate_retry_on = c(400, 403, 415, 404, 500, 502, 503, 504),
+
+    future.rng.onMisuse = "ignore"
+  )
+}

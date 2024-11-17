@@ -8,14 +8,15 @@ Description: BiblioButler is an R package for performing tasks related to biblio
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.2
+RoxygenNote: 7.3.2
 Imports: 
     dplyr,
     tidyr,
     stringr,
     httr,
     jsonlite,
-    llmR (>= 1.2.0)
+    llmR (>= 1.2.0),
+    furrr (>= 0.3.1)
 Suggests: 
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
