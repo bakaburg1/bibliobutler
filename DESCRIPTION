@@ -16,6 +16,7 @@ Imports:
     httr,
     jsonlite,
     llmR (>= 1.2.0),
+    furrr (>= 0.3.1),
     crayon (>= 1.5.3)
 Suggests: 
     testthat (>= 3.0.0)
