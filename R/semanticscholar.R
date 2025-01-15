@@ -438,9 +438,9 @@ s2_buld_id <- function(paper_data) {
 s2_process_response <- function(data) {
   if ("data" %in% names(data)) data <- data$data
 
-  paper_id <- data$paperId
+  original_id <- data$paperId
 
-  data |> dplyr::mutate(
+  data <- data |> dplyr::mutate(
     paperId = s2_buld_id(data),
     title = col_get("title"),
     abstract = col_get("abstract"),
@@ -462,11 +462,14 @@ s2_process_response <- function(data) {
     ),
     .api = "semanticscholar",
     .ids = data.frame(
-      semanticscholar = paper_id,
-      doi = col_get("externalIds.DOI"),
-      pmid = col_get("externalIds.PubMed"),
-      pmcid = col_get("externalIds.PubMedCentral"),
-      arxiv = col_get("externalIds.ArXiv")
+      semanticscholar = original_id,
+      data$externalIds |>
+        select(
+          doi = any_of("DOI"),
+          pmid = any_of("PubMed"),
+          pmcid = any_of("PubMedCentral"),
+          arxiv = any_of("ArXiv")
+        )
     ) |> purrr::discard(~ all(is.na(.x))),
     .keep = "none"
   )
