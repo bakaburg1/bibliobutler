@@ -396,12 +396,16 @@ s2_buld_id <- function(paper_data) {
 
   paper_data <- as.data.frame(paper_data)
 
+  if (!"externalIds" %in% names(paper_data)) {
+    return(paper_data$paper_data)
+  }
+
   dplyr::coalesce(
-    paper_data$externalIds.DOI,
-    if (!is.null(paper_data$externalIds.ArXiv)) {
-      paste0("10.48550/arXiv.", paper_data$externalIds.ArXiv)
+    paper_data$externalIds$DOI,
+    if (!is.null(paper_data$externalIds$ArXiv)) {
+      paste0("10.48550/arXiv.", paper_data$externalIds$ArXiv)
     },
-    paper_data$externalIds.PubMed,
+    paper_data$externalIds$PubMed,
     paper_data$paperId
   ) |> tolower()
 
