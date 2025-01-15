@@ -18,6 +18,7 @@ This function determines the type of article ID based on the provided string.
 It checks for PMIDs, PMCIDs, DOIs, OpenAlex IDs, and Semantic Scholar IDs.
 }
 \examples{
-get_article_id_type(c("12345678", "PMC1234567890", "10.1000/xyz123", "W1234567890", "99e1a52b664ec2b24605ce48eed7f4ff26c1bde9"))
+get_article_id_type(c("12345678", "PMC1234567890",
+"10.1000/xyz123", "W1234567890", "99e1a52b664ec2b24605ce48eed7f4ff26c1bde9"))
 
 }

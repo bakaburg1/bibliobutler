@@ -98,7 +98,8 @@ col_get <- function(col) {
 #'   type cannot be determined.
 #'
 #' @examples
-#' get_article_id_type(c("12345678", "PMC1234567890", "10.1000/xyz123", "W1234567890", "99e1a52b664ec2b24605ce48eed7f4ff26c1bde9"))
+#' get_article_id_type(c("12345678", "PMC1234567890",
+#' "10.1000/xyz123", "W1234567890", "99e1a52b664ec2b24605ce48eed7f4ff26c1bde9"))
 #'
 get_article_id_type <- function(ids) {
   # Regular expressions for identifying PMIDs, PMCIDs, and DOIs
@@ -129,29 +130,29 @@ get_article_id_type <- function(ids) {
 #'
 generate_record_name <- function(article_data) {
   # Check that the article data contains the required columns
-  if (!all(c("Authors", "Title", "Year") %in% colnames(article_data))) {
+  if (!all(c("authors", "title", "year") %in% colnames(article_data))) {
     return(NA)
   }
 
   # Generate a unique name for the article
   rec_names <- article_data |>
     dplyr::mutate(
-      FirstAuthor = purrr::map_chr(col_get("Authors"), \(aut) {
+      first_author = purrr::map_chr(col_get("authors"), \(aut) {
         stringr::str_split_1(aut, ",")[1]
       }) |>
         stringr::str_remove_all("\\.") |>
         stringr::str_to_title() |>
         stringr::str_remove_all(r"(['"\s:,])"),
-      CleanTitle = stringr::str_to_lower(col_get("Title")) |>
+      clean_title = stringr::str_to_lower(col_get("title")) |>
         remove_stopwords(),
-      FirstWord = stringr::str_extract(col_get("CleanTitle"), "\\w+"),
-      RecordName = sprintf(
+      first_word = stringr::str_extract(col_get("clean_title"), "\\w+"),
+      record_name = sprintf(
         "%s_%s_%s",
-        col_get("Year"), col_get("FirstAuthor"), col_get("FirstWord")) |>
+        col_get("year"), col_get("first_author"), col_get("first_word")) |>
         iconv(to = "ASCII//TRANSLIT") |>
         stringr::str_remove_all(r"(["'\\])")
     ) |>
-    dplyr::pull("RecordName")
+    dplyr::pull("record_name")
 
   # Add a sequential number to the record name if there are duplicates
   dups <- rec_names[duplicated(rec_names)] |> unique()
