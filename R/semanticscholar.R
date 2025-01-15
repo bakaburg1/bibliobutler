@@ -187,7 +187,9 @@ get_semanticscholar_articles <- function(
       }
     }
 
-    all_results <- all_results |> s2_process_response()
+    all_results <- all_results |>
+      head(max_results) |>
+      s2_process_response()
 
   }
 
