@@ -243,52 +243,100 @@ get_semanticscholar_linked <- function(
     ids,
     links = c("citations", "references", "related")
 ) {
-  # Validate and select the link types
+  # Validate and select the link types from allowed values
   links <- match.arg(links, several.ok = TRUE)
 
-  # Convert and validate IDs
-  ids <- s2_prepare_ids(ids)
+  # Initialize empty data frames for each link type
+  results <- list(
+    citations = data.frame(),
+    references = data.frame(),
+    related = data.frame()
+  )
 
+  # Return early if no IDs provided
   if (length(ids) == 0) {
-    return(list())
+    msg_warn("No IDs passed")
+    return(results)
   }
 
-  results <- list()
+  # Validate IDs and warn about any invalid ones
+  id_types <- get_article_id_type(ids)
+  if (any(is.na(id_types))) {
+    msg_warn("Some IDs are not valid:")
+    msg_warn(ids[is.na(id_types)])
+  }
 
-  # Fetch citations and references using get_semanticscholar_articles
+  # Keep only valid IDs for processing
+  ids <- ids[!is.na(id_types)]
+
+  # Return early if no valid IDs remain
+  if (length(ids) == 0) {
+    msg_warn("No valid IDs passed")
+    return(results)
+  }
+
+  # Process citations and references if requested
   if (any(c("citations", "references") %in% links)) {
+    # Select the appropriate fields based on requested link types
     fields <- c(
       references = "references.externalIds",
       citations = "citations.externalIds"
     )[links] |>
       purrr::discard(is.na)
 
-    article_data <- get_semanticscholar_articles(ids = ids, fields = fields)
+    # Fetch article data including citations/references
+    article_data <- get_semanticscholar_articles(
+      ids = ids, fields = fields
+    )
 
+    # Return early if no articles found
+    if (nrow(article_data) == 0) {
+      msg_warn("No articles found for the given IDs")
+      return(results)
+    }
+
+    # Process citations if requested
     if ("citations" %in% links) {
+      # Extract and format citation data
       results$citations <- article_data |>
         dplyr::select(source_id = "paperId", ".citations") |>
         tidyr::unnest(".citations") |>
         dplyr::select("source_id", linked_id = ".citations")
+
+      # Remove empty results
+      if (all(is.na(results$citations$linked_id))) {
+        results$citations <- results$citations[0, ]
+      }
     }
 
+    # Process references if requested
     if ("references" %in% links) {
+      # Extract and format reference data
       results$references <- article_data |>
         dplyr::select(source_id = "paperId", ".references") |>
         tidyr::unnest(".references") |>
         dplyr::select("source_id", linked_id = ".references")
+
+      # Remove empty results
+      if (all(is.na(results$references$linked_id))) {
+        results$references <- results$references[0, ]
+      }
     }
   }
 
-  # Fetch related papers using the recommendations API
+  # Process related papers if requested using recommendations API
   if ("related" %in% links) {
     endpoint <- "https://api.semanticscholar.org/recommendations/v1/papers"
 
+    # Prepare IDs in correct format for recommendations API
+    ids <- s2_prepare_ids(ids)
+
+    # Build request body with paper IDs
     body <- list(
-      positivePaperIds = as.list(ids),
-      fields = list("paperId")
+      positivePaperIds = as.list(ids)
     )
 
+    # Make API call to get recommendations
     content <- s2_make_api_call(
       endpoint = endpoint,
       method = "POST",
@@ -296,18 +344,33 @@ get_semanticscholar_linked <- function(
       query = list(fields = "externalIds")
     )
 
-    results$related <- purrr::map(content$recommendedPapers, function(paper) {
-      data.frame(
-        source_id = ids,
-        linked_id = s2_buld_id(paper),
-        stringsAsFactors = FALSE
-      )
-    }) |>
-      dplyr::bind_rows()
+    # Extract recommended papers
+    results$related <- content$recommendedPapers
+
+    # Process recommendations if any found
+    if (nrow(results$related) == 0) {
+      results$related <- data.frame()
+    } else {
+      # Transform recommendations into source-target pairs
+      results$related <- results$related |>
+        nrow() |>
+        seq_len() |>
+        purrr::map(\(x) {
+          paper <- content$recommendedPapers[x,]
+
+          # Create data frame linking source to recommended paper
+          data.frame(
+            source_id = ids,
+            linked_id = s2_buld_id(paper),
+            stringsAsFactors = FALSE
+          )
+        }) |>
+        dplyr::bind_rows()
+    }
   }
 
-  # Remove potential duplicates
-  results <- purrr::map(results, dplyr::distinct)
+  # Clean up results by removing any duplicate entries
+  results <- purrr::map(results, distinct)
 
   return(results)
 }
@@ -524,10 +587,10 @@ s2_process_batch <- function(batch_ids, query_data = NULL) {
 #'
 #' @keywords internal
 s2_make_api_call <- function(
-  endpoint,
-  method,
-  body = NULL,
-  query = NULL
+    endpoint,
+    method,
+    body = NULL,
+    query = NULL
 ) {
   # Create base request with endpoint
   req <- httr2::request(endpoint) |>
@@ -535,7 +598,7 @@ s2_make_api_call <- function(
     httr2::req_method(method) |>
     # Add the API key, will be ignored if NULL
     httr2::req_headers(
-    "x-api-key" = getOption("bibliobutler_semanticscholar_key")
+      "x-api-key" = getOption("bibliobutler_semanticscholar_key")
     ) |>
     # Add retry functionality
     httr2::req_retry(
