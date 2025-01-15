@@ -193,21 +193,14 @@ get_semanticscholar_articles <- function(
 
   }
 
-  # Combine all results and generate record names
-  results <- all_results |>
-    mutate(
-      RecordName = generate_record_name(all_results),
-      .after = ".api"
-    )
-
-  if (nrow(results) == 0) {
+  if (nrow(all_results) == 0) {
     warning(
       "No results found for the given query.",
       call. = FALSE, immediate. = TRUE
     )
   }
 
-  return(results)
+  return(all_results)
 }
 
 #' Get linked articles from Semantic Scholar
@@ -476,6 +469,10 @@ s2_process_response <- function(data) {
       arxiv = col_get("externalIds.ArXiv")
     ) |> purrr::discard(~ all(is.na(.x))),
     .keep = "none"
+  )
+
+  data |> dplyr::mutate(
+    record_name = generate_record_name(data)
   )
 }
 
