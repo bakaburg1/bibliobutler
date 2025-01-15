@@ -525,28 +525,36 @@ s2_make_api_call <- function(
   body = NULL,
   query = NULL
 ) {
-  # Combine API key header with any additional headers
-  api_headers <- httr::add_headers(
+  # Create base request with endpoint
+  req <- httr2::request(endpoint) |>
+    # Set the method
+    httr2::req_method(method) |>
+    # Add the API key, will be ignored if NULL
+    httr2::req_headers(
     "x-api-key" = getOption("bibliobutler_semanticscholar_key")
-  )
+    ) |>
+    # Add retry functionality
+    httr2::req_retry(
+      max_tries = 3,
+      is_transient = \(resp) {
+        httr2::resp_status(resp) %in% c(429, 500, 503)
+      }
+    )
 
-  response <- httr::RETRY(
-    method,
-    endpoint,
-    headers = api_headers,
-    query = query,
-    body = body,
-    encode = "json",
-    times = 3,
-    pause_min = 1,
-    pause_cap = 60,
-    terminate_on = getOption("newis_terminate_retry_on")
-  )
-
-  if (httr::http_error(response)) {
-    stop("Error in API request: ", httr::http_status(response)$message)
+  # Add query parameters if provided
+  if (!is.null(query)) {
+    req <- req |> httr2::req_url_query(!!!query)
   }
 
-  content <- httr::content(response, "text", encoding = "UTF-8")
-  jsonlite::fromJSON(content, flatten = TRUE)
+  # Add body with json encoding if provided
+  if (!is.null(body)) {
+    req <- req |> httr2::req_body_json(body)
+  }
+
+  # Perform request and parse JSON response
+  resp <- req |>
+    httr2::req_perform() |>
+    httr2::resp_body_json(simplifyVector = TRUE)
+
+  return(resp)
 }
