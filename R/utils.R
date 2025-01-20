@@ -149,7 +149,7 @@ generate_record_name <- function(article_data) {
 
   # Generate a unique name for the article
   record_names <- sprintf(
-        "%s_%s_%s",
+    "%s_%s_%s",
     article_data$.year,
     first_author,
     first_word
@@ -298,4 +298,34 @@ remove_url_from_id <- function(ids) {
     ids,
     sprintf("https://(www\\.)?(%s)/", urls)
   )
+}
+
+#' Set the number of parallel workers for BiblioButler operations
+#'
+#' This function sets the number of parallel workers that BiblioButler will use
+#' for parallel processing operations. The setting is stored in the
+#' 'bibliobutler.workers' option.
+#'
+#' @param n_cores Integer specifying the number of cores to use.
+#'
+#' @return No return value, called for side effects.
+#'
+#' @export
+#'
+set_parallel_process <- function(n_cores) {
+  options(bibliobutler.workers = n_cores)
+}
+
+#' Get the current number of parallel workers
+#'
+#' This function retrieves the number of parallel workers currently configured
+#' for BiblioButler operations. If not explicitly set, defaults to all available
+#' cores.
+#'
+#' @return Integer specifying the number of parallel workers configured.
+#'
+#' @export
+#'
+get_parallel_process <- function() {
+  getOption("bibliobutler.workers", parallel::detectCores())
 }
