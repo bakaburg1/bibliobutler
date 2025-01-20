@@ -278,3 +278,24 @@ parse_authors <- function(
 
   authors
 }
+
+#' Remove URL prefixes from a vector of IDs
+#'
+#' This function takes a vector of IDs and removes the URL prefixes from them.
+#'
+#' @param ids A vector of IDs.
+#'
+#' @return The input vector with URL prefixes removed.
+#'
+remove_url_from_id <- function(ids) {
+  urls <- c(
+    "doi\\.org", "openalex\\.org", "pubmed\\.ncbi\\.nlm\\.nih\\.gov",
+    "ncbi\\.nlm\\.nih\\.gov/pmc/articles"
+  ) |>
+    paste(collapse = "|")
+
+  stringr::str_remove(
+    ids,
+    sprintf("https://(www\\.)?(%s)/", urls)
+  )
+}
