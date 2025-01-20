@@ -195,3 +195,58 @@ remove_stopwords <- function(x) {
   # Remove stopwords using regex pattern
   gsub(regex, "", x, perl = TRUE)
 }
+
+#' Parse author names
+#'
+#' This function takes a vector of author names and parses them into a
+#' standardized format: full family name followed by initials.
+#'
+#' @param authors A vector of author names.
+#'
+#' @return A data frame with parsed author names.
+#'
+parse_authors <- function(
+    authors,
+    to_string = FALSE
+) {
+
+  authors <- authors |>
+    stringr::str_split("\\s*,\\s*") |>
+    unlist() |>
+    purrr::discard(~ .x %in% "") |>
+    # Fix all capital case names
+    stringr::str_replace_all("(?<=[A-Z])([A-Z])", \(x) tolower(x)) |>
+    purrr::map_chr(\(nm) {
+      ending_initials <- stringr::str_extract_all(nm, "(\\b[A-Z]\\.? ?)+$") |>
+        unlist()
+
+      if (!rlang::is_empty(ending_initials)) {
+        nm <- stringr::str_remove(nm, ending_initials)
+        nm <- paste(ending_initials, nm) |> stringr::str_trim()
+      }
+
+      nm
+    }) |>
+    humaniformat::parse_names() |>
+    mutate(
+      across(
+        c("first_name", "middle_name"),
+        ~ stringr::str_remove_all(.x, "[^A-Z ]")
+      )
+    ) |>
+    dplyr::mutate(
+      last_name = stringr::str_remove_all(.data$last_name, "\\."),
+      own_names = paste(
+        .data$first_name,
+        if_else(!is.na(.data$middle_name), .data$middle_name, "")
+      ) |>
+        stringr::str_trim(),
+      .keep = "none"
+    )
+
+  if (to_string) {
+    authors <- paste(authors$last_name, authors$own_names, collapse = ", ")
+  }
+
+  authors
+}
