@@ -2,18 +2,21 @@
 % Please edit documentation in R/utils.R
 \name{col_get}
 \alias{col_get}
-\title{Get a column from a data frame}
+\title{Get a column or nested element from a data frame}
 \usage{
-col_get(col)
+col_get(...)
 }
 \arguments{
-\item{col}{A single column to retrieve from a data frame.}
+\item{...}{One or more column names or indices to access nested elements.
+For example, col_get("authors", "name") would retrieve the "name" field
+from the "authors" column.}
 }
 \value{
-The specified column from the data frame. If the column does not
+The specified element from the data frame. If the element does not
 exist, returns NA.
 }
 \description{
-This function is designed to retrieve a single column from a data frame. If
-more than one column is passed, a warning is issued.
+This function retrieves a column or nested element from a data frame using
+multiple column names. It uses purrr::pluck() to access nested elements and
+returns NA if the element does not exist.
 }

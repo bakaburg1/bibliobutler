@@ -52,40 +52,23 @@ check_article_get_fields <- function(fields, select_field) {
   select_field <- select_field[fields]
 }
 
-#' Get a column from a data frame
+#' Get a column or nested element from a data frame
 #'
-#' This function is designed to retrieve a single column from a data frame. If
-#' more than one column is passed, a warning is issued.
+#' This function retrieves a column or nested element from a data frame using
+#' multiple column names. It uses purrr::pluck() to access nested elements and
+#' returns NA if the element does not exist.
 #'
-#' @param col A single column to retrieve from a data frame.
-#' @return The specified column from the data frame. If the column does not
+#' @param ... One or more column names or indices to access nested elements.
+#'   For example, col_get("authors", "name") would retrieve the "name" field
+#'   from the "authors" column.
+#' @return The specified element from the data frame. If the element does not
 #'   exist, returns NA.
 #'
-col_get <- function(col) {
-  # Unlist the column input
-  col <- unlist(col)
+col_get <- function(...) {
 
-  # Check if more than one column is passed
-  if (length(col) > 1) {
-    # Get the name of the function that called this function
-    caller_func <- sys.call(-1)
-    caller_func_name <- as.character(caller_func[[1]])
+  data <- dplyr::pick(everything())
 
-    warning(stringr::str_glue(
-      "Warning in {caller_func_name}: col_get() only works ",
-      "with a single column, but {length(col)} were passed: ",
-      "{paste(col, collapse = ', ')}"), call. = FALSE, immediate. = TRUE)
-  }
-
-  # Try to get the column, return NA if it does not exist
-  tryCatch(
-    {
-      dplyr::pick(any_of(col))[[1]]
-    },
-    error = function(e) {
-      NA
-    }
-  )
+  purrr::pluck(data, ...) %||% NA
 }
 
 #' Get the type of article ID
