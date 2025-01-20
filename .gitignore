@@ -50,3 +50,6 @@ rsconnect/
 
 # System files
 .DS_Store
+
+# Cursor rules
+.cursorrules
