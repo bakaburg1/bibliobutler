@@ -8,7 +8,7 @@ generate_record_name(article_data)
 }
 \arguments{
 \item{article_data}{A data frame containing article data, including the
-\code{Authors}, \code{Title}, and \code{Year} columns.}
+\code{.authors}, \code{.title}, and \code{.year} columns.}
 }
 \value{
 A character vector of unique record names.

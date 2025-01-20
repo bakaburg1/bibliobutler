@@ -108,44 +108,73 @@ get_article_id_type <- function(ids) {
 #' each article based on the year, first author, and first word of the title.
 #'
 #' @param article_data A data frame containing article data, including the
-#'   `Authors`, `Title`, and `Year` columns.
+#'   `.authors`, `.title`, and `.year` columns.
+#'
 #' @return A character vector of unique record names.
 #'
 generate_record_name <- function(article_data) {
+
   # Check that the article data contains the required columns
-  if (!all(c("authors", "title", "year") %in% colnames(article_data))) {
-    return(NA)
+  if (!all(c(".authors", ".title", ".year") %in% names(article_data))) {
+    msg_warn("No record name generated: missing required columns")
+    return(rep(NA, nrow(article_data)))
   }
+
+  # Extract the first author
+  if (!is.null(unlist(article_data[[".authors"]]))) {
+    # Check if authors were parsed already
+    if (is.character(article_data$.authors[[1]])) {
+      authors <- article_data$.authors |> purrr::map(parse_authors)
+    } else {
+      authors <- article_data$.authors
+    }
+
+    first_author <- authors |> purrr::map_chr(
+      ~ .x$last_name[1] %||% NA_character_)
+  } else {
+    first_author <- rep(NA, nrow(article_data))
+  }
+
+  # Extract the first word of the title
+  first_word <- article_data$.title |>
+    tolower() |>
+    # Remove common prefixes
+    stringr::str_remove("^author response: ") |>
+    stringr::str_remove("^review paper: ") |>
+    stringr::str_remove("^decision letter for ") |>
+    stringr::str_remove("^review for ") |>
+    remove_stopwords() |>
+    stringr::str_trim() |>
+    stringr::str_extract("[a-z]{3,}")
 
   # Generate a unique name for the article
-  rec_names <- article_data |>
-    dplyr::mutate(
-      first_author = purrr::map_chr(col_get("authors"), \(aut) {
-        stringr::str_split_1(aut, ",")[1]
-      }) |>
-        stringr::str_remove_all("\\.") |>
-        stringr::str_to_title() |>
-        stringr::str_remove_all(r"(['"\s:,])"),
-      clean_title = stringr::str_to_lower(col_get("title")) |>
-        remove_stopwords(),
-      first_word = stringr::str_extract(col_get("clean_title"), "\\w+"),
-      record_name = sprintf(
+  record_names <- sprintf(
         "%s_%s_%s",
-        col_get("year"), col_get("first_author"), col_get("first_word")) |>
-        iconv(to = "ASCII//TRANSLIT") |>
-        stringr::str_remove_all(r"(["'\\])")
-    ) |>
-    dplyr::pull("record_name")
+    article_data$.year,
+    first_author,
+    first_word
+  )
+
+  # Sanitize the text and remove special characters
+  record_names <- coalesce(
+    iconv(record_names, to = "ASCII//TRANSLIT"), # Convert to ASCII
+    record_names
+  ) |>
+    stringr::str_remove_all("\\W")
+
+  record_names[record_names == "NA_NA_NA"] <- NA_character_
 
   # Add a sequential number to the record name if there are duplicates
-  dups <- rec_names[duplicated(rec_names)] |> unique()
+  dups <- record_names[
+    duplicated(record_names) & !is.na(record_names)
+  ] |> unique()
 
   for (dup in dups) {
-    idx <- which(rec_names == dup)
-    rec_names[idx] <- sprintf("%s_%d", dup, seq_along(idx))
+    idx <- which(record_names == dup)
+    record_names[idx] <- sprintf("%s_%d", dup, seq_along(idx))
   }
 
-  rec_names
+  record_names
 
 }
 
