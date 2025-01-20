@@ -3,7 +3,10 @@
 #' @param appendLF Logical. Should a line feed be appended? Default TRUE
 #' @keywords internal
 msg_status <- function(..., appendLF = TRUE) {
-  message(crayon::silver("→", paste0(...)), appendLF = appendLF)
+  message(
+    crayon::white("→", stringr::str_glue(.envir = parent.frame(), ...)),
+    appendLF = appendLF
+  )
 }
 
 #' Display a warning message in yellow
@@ -11,7 +14,10 @@ msg_status <- function(..., appendLF = TRUE) {
 #' @param appendLF Logical. Should a line feed be appended? Default TRUE
 #' @keywords internal
 msg_warn <- function(..., appendLF = TRUE) {
-  message(crayon::yellow("!", paste0(...)), appendLF = appendLF)
+  message(
+    crayon::yellow("!", stringr::str_glue(.envir = parent.frame(), ...)),
+    appendLF = appendLF
+  )
 }
 
 #' Display an error message in red
@@ -19,7 +25,10 @@ msg_warn <- function(..., appendLF = TRUE) {
 #' @param appendLF Logical. Should a line feed be appended? Default TRUE
 #' @keywords internal
 msg_error <- function(..., appendLF = TRUE) {
-  message(crayon::red("✖", paste0(...)), appendLF = appendLF)
+  message(
+    crayon::red("✖", stringr::str_glue(.envir = parent.frame(), ...)),
+    appendLF = appendLF
+  )
 }
 
 #' Display a success message in green
@@ -27,7 +36,10 @@ msg_error <- function(..., appendLF = TRUE) {
 #' @param appendLF Logical. Should a line feed be appended? Default TRUE
 #' @keywords internal
 msg_success <- function(..., appendLF = TRUE) {
-  message(crayon::green("✔", paste0(...)), appendLF = appendLF)
+  message(
+    crayon::green("✔", stringr::str_glue(.envir = parent.frame(), ...)),
+    appendLF = appendLF
+  )
 }
 
 #' Display an info message in blue
@@ -35,5 +47,8 @@ msg_success <- function(..., appendLF = TRUE) {
 #' @param appendLF Logical. Should a line feed be appended? Default TRUE
 #' @keywords internal
 msg_info <- function(..., appendLF = TRUE) {
-  message(crayon::blue("ℹ", paste0(...)), appendLF = appendLF)
+  message(
+    crayon::blue("ℹ", stringr::str_glue(.envir = parent.frame(), ...)),
+    appendLF = appendLF
+  )
 }
