@@ -5,7 +5,6 @@ test_that(
 
   skip_on_cran()
 
-
   # Call the function with sample parameters
   results <- get_semanticscholar_articles(
     query = "machine learning",
@@ -20,21 +19,25 @@ test_that(
   expect_gt(nrow(results), 0)
   expect_lte(nrow(results), 100)
 
+  # Get only processed fields for testing
+  processed_results <- results |> 
+    dplyr::select(dplyr::starts_with("."))
+
   # Check it has at least the columns we expect
-  expect_setequal(names(results), c(
-    "paperId", "title", "abstract", "year",
-    "authors", "journal", "pubtype", ".api",
-    "record_name", ".ids"
+  expect_setequal(names(processed_results), c(
+    ".record_name", ".paperId", ".title", ".abstract", ".year",
+    ".authors", ".journal", ".pubtype", ".api", ".is_open_access",
+    ".url", ".ids"
   ))
 
   # Check if the publication year is 2025
-  expect_true(all(results$year == 2025))
+  expect_true(all(processed_results$.year == 2025))
 
   # Check .ids is a data frame column
-  expect_s3_class(results$.ids, "data.frame")
+  expect_s3_class(processed_results$.ids, "data.frame")
 
   # Check if doi and semantic scholar id are present in .ids
-  expect_contains(names(results$.ids), c("doi", "semanticscholar"))
+  expect_contains(names(processed_results$.ids), c("doi", "semanticscholar"))
 })
 
 test_that("get_semanticscholar_articles() can fetch articles by ID", {
@@ -47,24 +50,28 @@ test_that("get_semanticscholar_articles() can fetch articles by ID", {
   )
 
   results <- get_semanticscholar_articles(
-    ids = sample_ids
+    ids = sample_ids,
+    fields = c("citations", "references", "authors")  # Added authors field
   )
 
   expect_s3_class(results, "data.frame")
   # Might be fewer if some fail to fetch
   expect_equal(nrow(results), length(sample_ids))
-  expect_true(all(results$paperId != ""))          # Expect some non-empty IDs
+  expect_true(all(results$.paperId != ""))          # Expect some non-empty IDs
+
+  # Get only processed fields for testing
+  processed_results <- results |> 
+    dplyr::select(dplyr::starts_with("."))
 
   # Check we have at least the same columns as before:
-  expect_setequal(names(results), c(
-    "paperId", "title", "abstract", "year",
-    "authors", "journal", "pubtype", ".api",
-    '.references', '.citations',
-    "record_name", ".ids"
+  expect_setequal(names(processed_results), c(
+    ".record_name", ".paperId", ".title", ".abstract", ".year",
+    ".authors", ".journal", ".pubtype", ".api", ".is_open_access",
+    ".url", ".references", ".citations", ".ids"
   ))
 
   # Check if doi and semantic scholar id are present in .ids
-  expect_contains(names(results$.ids), c("doi", "semanticscholar"))
+  expect_contains(names(processed_results$.ids), c("doi", "semanticscholar"))
 })
 
 test_that("get_semanticscholar_linked() returns expected structure", {
@@ -162,8 +169,8 @@ test_that("Two different versions of the same ID return the same article", {
   expect_equal(nrow(result_doi), 1)
 
   # Check if some key fields match
-  expect_equal(result_s2$paperId, result_doi$paperId)
-  expect_equal(result_s2$title, result_doi$title)
-  expect_equal(result_s2$year, result_doi$year)
+  expect_equal(result_s2$.paperId, result_doi$.paperId)
+  expect_equal(result_s2$.title, result_doi$.title)
+  expect_equal(result_s2$.year, result_doi$.year)
 
 })

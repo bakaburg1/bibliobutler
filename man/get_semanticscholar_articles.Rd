@@ -51,7 +51,7 @@ not supported in the bulk search and will be ignored.}
 Inf).}
 }
 \value{
-A list of article data from Semantic Scholar.
+A data frame of article data from Semantic Scholar.
 }
 \description{
 This function fetches article data from the Semantic Scholar API
@@ -63,7 +63,7 @@ and pagination of results. Only one of \code{ids} or \code{query} should be prov
 \details{
 This function interacts with the Semantic Scholar API to retrieve
 article information. We suggest getting an API key from Semantic Scholar
-and setting the 'bibliobutler_semanticscholar_key' option to not incur in
+and setting the 'bibliobutler.semanticscholar_key' option to not incur in
 rate limits.
 }
 \examples{

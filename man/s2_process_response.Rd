@@ -12,21 +12,8 @@ Semantic Scholar. Can be either the full response object or just the data
 portion.}
 }
 \value{
-A data frame containing the processed paper metadata with
-standardized column names and formats. Includes:
-\itemize{
-\item paperId: Unique identifier built from available IDs
-\item title: Paper title
-\item abstract: Paper abstract
-\item authors: Formatted author names
-\item year: Publication year
-\item journal: Publication venue/journal
-\item pubtype: Publication type(s)
-\item .references: List of reference paper IDs
-\item .citations: List of citing paper IDs
-\item .api: API source identifier
-\item .ids: Data frame of all available identifiers
-}
+A data frame containing the processed paper metadata with a set of
+sanitized columns at the beginning, identified by a dot prefix.
 }
 \description{
 This function processes the raw response data from the Semantic Scholar API
