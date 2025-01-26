@@ -1,10 +1,10 @@
-Package: BiblioButler
+Package: bibliobutler
 Title: AI-Powered Bibliographic Reference Management
 Version: 0.1.0
 Authors@R: 
     person("Angelo", "D'Ambrosio", email = "a.dambrosioMD@gmail.com", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-2045-5155"))
-Description: BiblioButler is an R package for performing tasks related to bibliographic references collection, selection, and analysis with the support of AI and machine learning functionalities.
+Description: bibliobutler is an R package for performing tasks related to bibliographic references collection, selection, and analysis with the support of AI and machine learning functionalities.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

@@ -7,6 +7,6 @@
 # * https://testthat.r-lib.org/articles/special-files.html
 
 library(testthat)
-library(BiblioButler)
+library(bibliobutler)
 
-test_check("BiblioButler")
+test_check("bibliobutler")
