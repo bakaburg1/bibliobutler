@@ -114,12 +114,6 @@ get_article_id_type <- function(ids) {
 #'
 generate_record_name <- function(article_data) {
 
-  # Check that the article data contains the required columns
-  if (!all(c(".authors", ".title", ".year") %in% names(article_data))) {
-    msg_warn("No record name generated: missing required columns")
-    return(rep(NA, nrow(article_data)))
-  }
-
   # Extract the first author
   if (!is.null(unlist(article_data[[".authors"]]))) {
     # Check if authors were parsed already
@@ -300,10 +294,10 @@ remove_url_from_id <- function(ids) {
   )
 }
 
-#' Set the number of parallel workers for BiblioButler operations
+#' Set the number of parallel workers for `bibliobutler` operations
 #'
-#' This function sets the number of parallel workers that BiblioButler will use
-#' for parallel processing operations. The setting is stored in the
+#' This function sets the number of parallel workers that `bibliobutler` will
+#' use for parallel processing operations. The setting is stored in the
 #' 'bibliobutler.workers' option.
 #'
 #' @param n_cores Integer specifying the number of cores to use.
@@ -319,8 +313,8 @@ set_parallel_process <- function(n_cores) {
 #' Get the current number of parallel workers
 #'
 #' This function retrieves the number of parallel workers currently configured
-#' for BiblioButler operations. If not explicitly set, defaults to all available
-#' cores.
+#' for `bibliobutler` operations. If not explicitly set, defaults to all
+#' available cores.
 #'
 #' @return Integer specifying the number of parallel workers configured.
 #'
