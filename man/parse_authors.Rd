@@ -14,5 +14,5 @@ A data frame with parsed author names.
 }
 \description{
 This function takes a vector of author names and parses them into a
-standardized format.
+standardized format: full family name followed by initials.
 }
