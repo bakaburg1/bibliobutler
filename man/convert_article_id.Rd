@@ -4,7 +4,11 @@
 \alias{convert_article_id}
 \title{Convert between DOIs, PMIDs, PMCIDs, and OpenAlex IDs}
 \usage{
-convert_article_id(ids, to = NULL, keep_failed_conversions = FALSE)
+convert_article_id(
+  ids,
+  to = c("doi", "pmid", "pmcid", "openalex", "semanticscholar"),
+  keep_failed_conversions = FALSE
+)
 }
 \arguments{
 \item{ids}{A character vector of DOIs, PMIDs, PMCIDs, or OpenAlex IDs to

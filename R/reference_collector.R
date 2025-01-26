@@ -15,9 +15,9 @@ collect_references <- function(source, query, limit = 100) {
   # Placeholder implementation
   message("Collecting references from ", source, " for query: ", query)
   message("Limit: ", limit, " references")
-  
+
   # TODO: Implement actual reference collection logic
-  
+
   data.frame(
     title = character(0),
     authors = character(0),
@@ -58,25 +58,17 @@ collect_references <- function(source, query, limit = 100) {
 #' dois <- c("10.1016/s0140-6736(06)68853-3", "10.1111/j.1469-0691.2007.01724.x")
 #' pmids <- convert_article_id(dois, to = "pmid", keep_failed_conversions = TRUE)
 #' }
-#' 
+#'
 #' @importFrom dplyr mutate group_split bind_rows n coalesce
 #'
 #' @export
 convert_article_id <- function(
     ids,
-    to = NULL,
+    to = c("doi", "pmid", "pmcid", "openalex", "semanticscholar"),
     keep_failed_conversions = FALSE
 ) {
-  # Validate conversion direction
-  valid_formats <- c("pmid", "doi", "pmcid", "openalex", "semanticscholar")
 
-  if (!is.null(to) && !to %in% valid_formats) {
-    stop(
-      "Invalid conversion direction. Use ",
-      stringr::str_flatten(valid_formats, collapse = ", ", last = ", or "),
-      " as the 'to' argument."
-    )
-  }
+  to <- match.arg(to)
 
   # If all inputs are NA, return immediately
   if (all(is.na(ids))) {
@@ -99,30 +91,16 @@ convert_article_id <- function(
     )
   }
 
-  # Determine conversion direction if not specified
-  if (is.null(to)) {
-    if (!"doi" %in% id_types) {
-      message("The 'to' argument is not specified. Converting to DOIs.")
-      to <- "doi"
-    } else if (!"pmid" %in% id_types) {
-      message("The 'to' argument is not specified. Converting to PMIDs.")
-      to <- "pmid"
-    } else {
-      stop(
-        "Cannot determine the conversion direction. ",
-        "Please specify 'to' argument."
-      )
-    }
-  }
-
   # Create a data frame with all IDs, their types, and batch numbers
   all_ids_df <- data.frame(
     id = ids_no_missings,
     type = id_types
-  ) |> mutate(
-    batch = ceiling(seq_len(n()) / 50),
-    .by = type
-  ) |> group_split(type, batch)
+  ) |>
+    mutate(
+      batch = ceiling(seq_len(n()) / 50),
+      .by = "type"
+    ) |>
+    group_split(.data[["type"]], .data[["batch"]])
 
   # Process all IDs in a single future_map call
   results <- furrr::future_map(
@@ -135,28 +113,38 @@ convert_article_id <- function(
         return(data.frame(original_id = batch_ids, converted_id = batch_ids))
       }
 
-      # Construct the OpenAlex API filter parameter
-      filter_param <- paste0(id_type, ":", paste(
-        if (id_type == "pmcid") {
-          stringr::str_remove(batch_ids, "^PMC")
-        } else batch_ids,
-        collapse = "|"
-      ))
+      # Get the ids using the appropriate API
+      if (id_type == "semanticscholar" || to == "semanticscholar") {
 
-      # Get the ids using the OpenAlex API
-      api_results <- get_openalex_article(
-        filter_query = filter_param, select = "ids")
+        api_result <- get_semanticscholar_articles(
+          ids = batch_ids, fields = "externalIds")
 
-      # Process the results
-      converted_ids <- api_results$.ids[[to]]
-      original_ids <- api_results$.ids[[id_type]]
+      } else { # Default to OpenAlex API for all apart semanticscholar IDs
 
-      # Mark as NF ids not mapping to any article in the openalex database
-      missing_ids <- setdiff(batch_ids, original_ids)
-      if (length(missing_ids) > 0) {
-        converted_ids <- c(converted_ids, rep("NF", length(missing_ids)))
-        original_ids <- c(original_ids, missing_ids)
+        # Construct the OpenAlex API filter parameter
+        filter_param <- paste0(id_type, ":", paste(
+          if (id_type == "pmcid") {
+            stringr::str_remove(batch_ids, "^PMC")
+          } else batch_ids,
+          collapse = "|"
+        ))
+
+        api_result <- get_openalex_articles(
+          ids = batch_ids, fields = "ids"
+        )
       }
+
+      conversion_df <- left_join(
+        data.frame(source_id = batch_ids),
+        api_result$.ids |> select(any_of(c(to, id_type))),
+        by = c("source_id" = id_type))
+
+      converted_ids <- conversion_df[[to]]
+
+      if (to == "doi") converted_ids <- tolower(converted_ids)
+
+      converted_ids <- coalesce(converted_ids, "NF")
+      original_ids <- conversion_df$source_id
 
       data.frame(original_id = original_ids, converted_id = converted_ids)
     }) |> bind_rows()
