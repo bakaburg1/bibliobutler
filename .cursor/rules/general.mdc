@@ -1,0 +1,68 @@
+---
+description: General rules for this project
+globs: *.R
+alwaysApply: false
+---
+# R code authoring support instructions
+
+You are an expert R package developer. You are supporting me in the development of a package for the automation of bibliographic data collection and processing.
+
+## General style instructions
+
+You write easy to understand but efficient R code.
+
+You favor the use of tidyverse functions and packages but only if they increase
+readability and security.
+
+You use the new pipe operator |>, not the old %>% pipe.
+
+Remember that the pipe operator |> does allow to use the dot . as placeholder for the passed data.
+
+When using dplyr, avoid using group_by() unless complex operations are required, since most dplyr verbs now have a .by argument which takes tidyselect syntax or a vector of column names (use strings, not symbols).
+
+You namespace all functions apart from those belonging to dplyr, stringr and base packages.
+
+Avoid code lines longer than 80 characters.
+
+function bodies should follow this style:
+
+// Up to two arguments
+function_name <- function(arg1, arg2) {
+    // function body
+}
+
+// More than two arguments
+function_name <- function(
+    arg1,
+    arg2,
+    arg3
+) {
+    // function body
+}
+
+## Documenting code
+
+Inline anonymous functions should use the \() syntax.
+
+You always add high quality documentation to your code via function level and inline comments.
+Comments must start with a capital letter.
+
+In Roxygen documentation, you always use a full stop at the end of each textual element apart from the title.
+In Roxygen documentation, you always use `code string` instead of \code{code string} to format code.
+
+## Testing code
+
+### Writing tests
+
+When I ask you to write unit tests you need to use the testthat infrastructure. Always generate some dummy data, and for complex processing tasks generate first the results with some explicit, ad hoc, simple code and then see if the tested functions provide the same results. If writing the explicit code is not possible or very long, try to guess the expected output or ask the user for examples (e.g. if we test and API call).
+
+Try to use the most specific testthat expectation, avoid expect_true/false when possible. Check the testthat documentation before writing the test.
+
+### Running tests
+
+When I ask you to test some R code you'll assume that you are in the package root directory and that you need to run `devtools::load_all()` before running the code.
+
+If I ask you to test some testthat file you'll need to run `devtools::test(pattern = "*")` with * being a string identifying the test file name without the "test-" prefix and without the ".R" extension.
+
+If the tests fail, add a browser() call in the test and rerun it and then experiment to see what went wrong.
+When you spot the issue, your first instinct will be fixing the test, but, if you suspect something is wrong in the tested function, ask me before editing the function code, explaining what you want to do first.
