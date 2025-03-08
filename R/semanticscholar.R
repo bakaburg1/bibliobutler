@@ -520,9 +520,9 @@ s2_process_response <- function(data) {
     .paperId = col_get("paperId"),
     .title = col_get("title"),
     .abstract = col_get("abstract"),
-    across(any_of("authors"), ~ .x |> purrr::map(\(.y) {
-      if (rlang::is_empty(.y)) return(data.frame())
-      .y[["name"]] |> parse_authors()
+    across(any_of("authors"), ~ .x |> purrr::map_chr(\(.y) {
+      if (rlang::is_empty(.y)) return(NA_character_)
+      .y[["name"]] |> parse_authors(to_string = TRUE)
     }), .names = ".authors"),
     .year = col_get("year"),
     .journal = col_get("venue"),
