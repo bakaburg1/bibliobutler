@@ -262,7 +262,7 @@ parse_authors <- function(
         .data$first_name,
         if_else(!is.na(.data$middle_name), .data$middle_name, "")
       ) |>
-        stringr::str_trim(),
+        stringr::str_remove_all("\\s+"),
       .keep = "none"
     )
 
