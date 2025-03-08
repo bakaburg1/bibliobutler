@@ -20,7 +20,7 @@ test_that(
   expect_lte(nrow(results), 100)
 
   # Get only processed fields for testing
-  processed_results <- results |> 
+  processed_results <- results |>
     dplyr::select(dplyr::starts_with("."))
 
   # Check it has at least the columns we expect
@@ -60,7 +60,7 @@ test_that("get_semanticscholar_articles() can fetch articles by ID", {
   expect_true(all(results$.paperId != ""))          # Expect some non-empty IDs
 
   # Get only processed fields for testing
-  processed_results <- results |> 
+  processed_results <- results |>
     dplyr::select(dplyr::starts_with("."))
 
   # Check we have at least the same columns as before:

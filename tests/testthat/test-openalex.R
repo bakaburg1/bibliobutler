@@ -20,7 +20,7 @@ test_that(
   expect_lte(nrow(results), 100)
 
   # Get only processed fields for testing
-  processed_results <- results |> 
+  processed_results <- results |>
     dplyr::select(dplyr::starts_with("."))
 
   # Check it has at least the columns we expect
@@ -61,7 +61,7 @@ test_that("get_openalex_articles() can fetch articles by ID", {
 
   # Check columns in both results
   for (results in list(result_oa, result_doi)) {
-    processed_results <- results |> 
+    processed_results <- results |>
       dplyr::select(dplyr::starts_with("."))
 
     expect_setequal(names(processed_results), c(
@@ -76,6 +76,11 @@ test_that("get_openalex_articles() can fetch articles by ID", {
 
 test_that("get_openalex_linked() returns expected structure", {
   skip_on_cran()
+  
+  # Skip if bibliobutler package isn't installed (required for mirai_map)
+  if (!requireNamespace("bibliobutler", quietly = TRUE)) {
+    skip("bibliobutler package must be installed for tests using mirai_map")
+  }
 
   linked <- get_openalex_linked(ids = "10.1371/journal.pone.0266781")
 
@@ -126,6 +131,11 @@ test_that(
 
 test_that("get_openalex_linked() handles single ID type", {
   skip_on_cran()
+  
+  # Skip if bibliobutler package isn't installed (required for mirai_map)
+  if (!requireNamespace("bibliobutler", quietly = TRUE)) {
+    skip("bibliobutler package must be installed for tests using mirai_map")
+  }
 
   # Test with just OpenAlex ID
   linked_oa <- get_openalex_linked(ids = "W2741809807")
@@ -143,7 +153,7 @@ test_that("get_openalex_linked() handles single ID type", {
 test_that("Two different versions of the same ID return the same article", {
   skip_on_cran()
 
-  openalex_id <- "W2741809807"  # Without URL prefix
+  openalex_id <- "W4224016882"  # Without URL prefix
   doi_id      <- "10.1371/journal.pone.0266781"
 
   result_oa  <- get_openalex_articles(ids = openalex_id)
@@ -219,4 +229,4 @@ test_that("oa_prepare_ids handles various ID formats", {
     )),
     "OpenAlex can accept only one ID type at once"
   )
-}) 
+})
