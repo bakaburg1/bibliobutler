@@ -87,6 +87,13 @@ get_openalex_articles <- function(
     unique() |>
     paste(collapse = ",")
 
+  # If ids are provided, remove 'authorships' from the selected fields to avoid conversion errors
+  # if (!is.null(ids)) {
+  #   fields <- gsub("authorships,?", "", fields)
+  #   fields <- gsub(",,", ",", fields)
+  #   fields <- trimws(fields, which = "both", whitespace = ",")
+  # }
+
   # Prepare the arguments for oa_fetch
   # We want to handle IDs separately from queries
   oa_args <- list(
@@ -124,6 +131,12 @@ get_openalex_articles <- function(
     }
     if (length(parsed_ids$openalex) > 0) {
       oa_args$identifier <- parsed_ids$openalex
+      # Workaround for openalexR bug: Single identifiers cause errors by
+      # ignoring count_only. Duplicate the ID to force count_only to work.
+      # Results will show one record only anyway
+      if (length(oa_args$identifier) == 1) {
+        oa_args$identifier <- rep(oa_args$identifier, 2)
+      }
     }
 
     # If user had a big mixture of IDs, some might be missing.
@@ -136,15 +149,25 @@ get_openalex_articles <- function(
 
   }
 
-  # Inspect how many results there are for this query
-  request_info <- withCallingHandlers( # Wrap to restyle messages
-    do.call(openalexR::oa_fetch, c(oa_args, count_only = TRUE)),
-    message = \(m) {
-      msg_status(m$message)
-      invokeRestart("muffleMessage")
-    }
-  ) |>
-    as.data.frame()
+  # For ID-based queries, we know the count upfront
+  if (!is.null(ids)) {
+    request_info <- data.frame(
+      count = length(ids),
+      db_response_time_ms = NA,
+      page = 1,
+      per_page = per_page
+    )
+  } else {
+    # For search queries, get the count from OpenAlex
+    request_info <- withCallingHandlers( # Wrap to restyle messages
+      do.call(openalexR::oa_fetch, c(oa_args, count_only = TRUE)),
+      message = \(m) {
+        msg_status(m$message)
+        invokeRestart("muffleMessage")
+      }
+    ) |>
+      as.data.frame()
+  }
 
   msg_info("Total results: {request_info$count} for query")
 
@@ -153,7 +176,8 @@ get_openalex_articles <- function(
   }
 
   # Get the corresponding number of pages to fetch
-  pages <- ceiling(min(request_info$count, max_results, na.rm = T) / per_page)
+  pages <- ceiling(
+    min(request_info$count, max_results, na.rm = TRUE) / per_page)
 
   msg_status("Fetching {pages} pages of OpenAlex results")
 
@@ -208,7 +232,6 @@ get_openalex_articles <- function(
 
   msg_success("Fetched {nrow(results)} results from OpenAlex")
 
-  # Convert openalexR output to standardized format
   output <- oa_process_response(results)
 
   # If no results, warn
@@ -276,15 +299,15 @@ get_openalex_linked <- function(
     if (link_type %in% links) {
       # Extract relevant columns and unnest
       df <- works_df |>
-        select('.ids', any_of(link_col)) |>
+        select(".ids", all_of(link_col)) |>
         mutate(
           # Prefer DOI followed by OpenAlex ID
           source_id = with(.data$.ids, coalesce(
             doi, openalex)),
           .ids = NULL
         ) |>
-        tidyr::unnest(link_col, keep_empty = TRUE) |>
-        select("source_id", linked_id = any_of(link_col)) |>
+        tidyr::unnest(all_of(link_col), keep_empty = TRUE) |>
+        select("source_id", linked_id = all_of(link_col)) |>
         filter(!is.na(.data$linked_id))
 
       out[[link_type]] <- df
@@ -485,14 +508,38 @@ oa_process_response <- function(data) {
     return(data.frame())  # empty
   }
 
-  # Transform each row's authors
-  authors_vec <- purrr::map(seq_len(nrow(data)), \(i) {
-    names <- data[["authorships"]][[i]]$display_name
-    if (is.null(names)) {
-      return(data.frame())
-    }
-    names |> parse_authors()
-  })
+  # Ensure authorship column exists; if missing, create as list-column of
+  # empty data.frames
+  if (!"authorships" %in% names(data)) {
+    authors_vec <- replicate(nrow(data), data.frame(), simplify = FALSE)
+  } else {
+
+    # Transform each row's authors
+    authors_vec <- purrr::map_chr(seq_len(nrow(data)), \(i) {
+      # Inspect the authorship field safely
+      auth_data <- data[["authorships"]][[i]]
+
+      if (rlang::is_empty(auth_data)) {
+        msg_warn("No author data for record {i}")
+        return(NA_character_)
+      }
+
+      auth_names <- auth_data$display_name
+
+      parsed_names <- try({
+        auth_names |> parse_authors(to_string = TRUE)
+      }, silent = TRUE)
+
+      if (inherits(parsed_names, "try-error")) {
+        msg_warn("Failed to parse author names for record {i}")
+        # If we fail to parse, return the raw data
+        return(NA_character_)
+      }
+
+      parsed_names
+
+    }) |> unlist()
+  }
 
   # References are in "referenced_works", a character vector of OpenAlex IDs.
   # Related are in "related_works". We store them as a list-column
