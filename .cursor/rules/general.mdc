@@ -66,3 +66,9 @@ If I ask you to test some testthat file you'll need to run `devtools::test(patte
 
 If the tests fail, add a browser() call in the test and rerun it and then experiment to see what went wrong.
 When you spot the issue, your first instinct will be fixing the test, but, if you suspect something is wrong in the tested function, ask me before editing the function code, explaining what you want to do first.
+
+### Common errors
+
+- You should not use purrr::map_dfr(). it's deprecated. use purrr::map() followed by bind_rows()
+- dplyr is always imported, no need to namespace its functions
+- use print() and str() to debug in terminal
