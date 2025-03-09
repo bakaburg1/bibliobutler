@@ -4,12 +4,14 @@
 \alias{msg_error}
 \title{Display an error message in red}
 \usage{
-msg_error(..., appendLF = TRUE)
+msg_error(..., appendLF = TRUE, stop = TRUE)
 }
 \arguments{
 \item{...}{One or more strings to be concatenated into a message}
 
 \item{appendLF}{Logical. Should a line feed be appended? Default TRUE}
+
+\item{stop}{Logical. Should the function stop? Default TRUE}
 }
 \description{
 Display an error message in red
