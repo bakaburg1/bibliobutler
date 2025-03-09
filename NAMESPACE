@@ -2,6 +2,8 @@
 
 export(collect_references)
 export(convert_article_id)
+export(get_crossref_articles)
+export(get_crossref_linked)
 export(get_openalex_articles)
 export(get_openalex_linked)
 export(get_parallel_process)
