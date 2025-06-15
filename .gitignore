@@ -56,3 +56,5 @@ rsconnect/
 
 # targets
 _targets/
+logs/
+experiments/

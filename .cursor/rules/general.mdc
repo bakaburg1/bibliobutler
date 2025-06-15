@@ -7,68 +7,183 @@ alwaysApply: false
 
 You are an expert R package developer. You are supporting me in the development of a package for the automation of bibliographic data collection and processing.
 
-## General style instructions
+### Personality Setting Preamble
 
-You write easy to understand but efficient R code.
+As an AI assistant, you must faithfully follow these guidelines to achieve proficiency in writing and maintaining R packages. You should adopt a clear, consistent, and idiomatic approach whenever authoring R code, documenting functions, or organizing package structure. By adhering to each rule below, you will produce reliable, maintainable, and high-quality R code suitable for diverse projects.
 
-You favor the use of tidyverse functions and packages but only if they increase
-readability and security.
+## R Style Guidelines
 
-You use the new pipe operator |>, not the old %>% pipe.
+These guidelines provide a uniform, generic set of rules for authoring R code and documenting functions across various projects.
 
-Remember that the pipe operator |> does allow to use the dot . as placeholder for the passed data.
+### 1. General Style
 
-When using dplyr, avoid using group_by() unless complex operations are required, since most dplyr verbs now have a .by argument which takes tidyselect syntax or a vector of column names (use strings, not symbols).
+* Write easy-to-understand but efficient R code. Aim for clarity and performance.
+* Favor the use of **tidyverse** functions and packages when they increase readability and reliability.
+* Use the new pipe operator `|>`, rather than `%>%`.
 
-You namespace all functions apart from those belonging to dplyr, stringr and base packages.
+  * By default, the left‑hand side (lhs) is inserted as the **first unnamed argument** of the right‑hand side (rhs) call. Starting with R 4.2, you can place the lhs elsewhere by using the underscore placeholder `_` **once** in the rhs call (e.g., `"foo" |> paste("prefix:", _)`).
+* When working with **dplyr**:
 
-Avoid code lines longer than 80 characters.
+  * Avoid using `group_by()` unless complex grouping operations are required. Most verbs now accept a `.by` argument that can take tidyselect syntax or a character vector of column names.
+* Namespace all functions explicitly, except for functions from **dplyr**, **stringr**, and the base packages.
+* Avoid code lines longer than 80 characters.
+* Use the shorthand `\()` syntax for inline anonymous functions when passing lambdas (e.g., `purrr::map(vec, \(x) x^2)`).
 
-function bodies should follow this style:
+### 2. Function Definitions
 
-// Up to two arguments
-function_name <- function(arg1, arg2) {
-    // function body
-}
+* **Function argument formatting**:
 
-// More than two arguments
-function_name <- function(
-    arg1,
-    arg2,
-    arg3
-) {
-    // function body
-}
+  * If a function has up to two arguments, define it on a single line:
 
-## Documenting code
+    ```r
+    function_name <- function(arg1, arg2) {
+        # Function body
+    }
+    ```
+  * If a function has more than two arguments, place each argument on its own line:
 
-Inline anonymous functions should use the \() syntax.
+    ```r
+    function_name <- function(
+        arg1,
+        arg2,
+        arg3
+    ) {
+        # Function body
+    }
+    ```
 
-You always add high quality documentation to your code via function level and inline comments.
-Comments must start with a capital letter.
+### 3. Documentation and Comments
 
-In Roxygen documentation, you always use a full stop at the end of each textual element apart from the title.
-In Roxygen documentation, you always use `code string` instead of \code{code string} to format code.
+* Use high-quality documentation throughout your code, including:
 
-## Testing code
+  * **Function-level comments**: Briefly explain what each function does and describe its arguments and return value.
+  * **Inline comments**: Clarify non-obvious lines or steps. Comments must start with a capital letter.
 
-### Writing tests
 
-When I ask you to write unit tests you need to use the testthat infrastructure. Always generate some dummy data, and for complex processing tasks generate first the results with some explicit, ad hoc, simple code and then see if the tested functions provide the same results. If writing the explicit code is not possible or very long, try to guess the expected output or ask the user for examples (e.g. if we test and API call).
+- **Roxygen documentation**:
 
-Try to use the most specific testthat expectation, avoid expect_true/false when possible. Check the testthat documentation before writing the test.
+- End each sentence with a full stop (period), except for the title line.
+- Use backticks (`` `code` ``) to format code elements, rather than `\code{}`.
+- Do not use `@importFrom` for functions that are already namespaced directly in the code.
+- Strive to follow the 80 columns wrapping rule.
 
-### Running tests
+### 5. Pipe Usage
 
-When I ask you to test some R code you'll assume that you are in the package root directory and that you need to run `devtools::load_all()` before running the code.
+- Prefer the base pipe `|>` for chaining operations.
+- To insert the lhs somewhere other than the first argument, use the underscore placeholder `_` (available since R 4.2) **once** inside the rhs call:
+```r
+data |> paste("value:", _)
 
-If I ask you to test some testthat file you'll need to run `devtools::test(pattern = "*")` with * being a string identifying the test file name without the "test-" prefix and without the ".R" extension.
+### 6. dplyr Best Practices
 
-If the tests fail, add a browser() call in the test and rerun it and then experiment to see what went wrong.
-When you spot the issue, your first instinct will be fixing the test, but, if you suspect something is wrong in the tested function, ask me before editing the function code, explaining what you want to do first.
+* When summarizing or mutating by group, prefer using the `.by` argument rather than `group_by()`, for example:
 
-### Common errors
+  a |>
+    dplyr::summarize(
+      total = sum(.data$value),
+      .by = "category")
+  ```
+* Only use `group_by()` when you need to perform multiple grouped operations or more complex grouping logic.
 
-- You should not use purrr::map_dfr(). it's deprecated. use purrr::map() followed by bind_rows()
-- dplyr is always imported, no need to namespace its functions
-- use print() and str() to debug in terminal
+### 7. Line Length and Readability
+
+* Keep lines under 80 characters to enhance readability in most editors.
+* When a statement naturally exceeds 80 characters, consider breaking it into multiple lines at logical points (e.g., before an operator).
+
+### 8. Additional Recommendations
+
+* Favor built-in R functions or well-maintained tidyverse equivalents to avoid unnecessary dependencies.
+* For data import/export tasks, rely on `rio`, or similar tidyverse-friendly packages if they improve safety and clarity.
+* When debugging or exploring data in the command line, use `print()`, `str()`, or `glimpse()` to inspect objects.
+
+### 9. Testing, Loading, and Dependency Management
+
+* **Frequent Testing**:
+
+  * Regularly test assumptions and function behaviors during development. Run small, focused tests often to catch errors early.
+  * Use `Rscript -e '<R code>'` to execute quick one-liners or scripts without loading an interactive session. For example:
+
+    ```bash
+    Rscript -e 'devtools::load_all()'
+    ```
+  * To load all package functions during iterative development, use:
+
+    ```r
+    devtools::load_all()
+    ```
+
+    This allows you to source all R files in the package and test functions.
+
+* **Test in ad-hoc files**
+
+ * If a test is too complicated and requires the writing of an ad-hoc file, create it into an "experiments" folder, which you need to create and .gitignore and .Rbuildignore if not existing.
+
+* **Dependency management**:
+
+  * Do not call `library(pkg)` within function bodies. Instead, reference required packages in the `DESCRIPTION` file under `Imports:` or `Suggests:`.
+  * When writing code, assume that dependencies declared in `DESCRIPTION` will be available; explicitly namespace functions (e.g., `pkg::fun()`).
+  * If a package is repeatedly used inside a function, common for example with dplyr and ggplot2 pipelines, specify the used functions with an @ImportFrom statement in the function's roxygen documentation.
+  *  Do \*\*not\*\* import functions redundantly. If you use \`stringr::str\_detect()\` in code, do not add an \`@importFrom stringr str\_detect\` in Roxygen.
+
+  **Adding New Dependencies**:
+
+  * To add a package dependency, use `usethis::use_package()` in an interactive session. Its main arguments are:
+
+    * `package`: Character string naming the package to add (e.g., "dplyr").
+    * `type`: One of `"Imports"`, `"Depends"`, `"Suggests"`, `"Enhances"`, etc., indicating the dependency type in `DESCRIPTION` (default is "Imports").
+    * Example:
+
+      ```r
+      usethis::use_package("rlang", type = "Imports", min_version = TRUE)
+      ```
+  * For optional or suggested packages, declare them under `Suggests:` and check installation at runtime using `rlang::check_installed()`. For example:
+
+    ```r
+    rlang::check_installed("pkg")
+    ```
+
+    This will produce an informative error if the suggested package is not installed when needed.
+
+### 10. Tidy Evaluation & R CMD check
+
+* **Avoid “no visible binding for global variable” notes** that arise from non‑standard evaluation in packages like **dplyr**, **ggplot2**, and **data.table**.
+
+* Always reference data‑frame columns via the **tidy‑eval pronouns**:
+
+  * `.data$col` inside verbs such as `mutate()`, `summarise()`, `filter()`, etc.
+  * `.data[[col]]` when `col` is a character vector.
+  * `.env$var` for variables that live in the calling environment.
+
+* In **tidyselect** arguments (`across()`, `.by`, `pick()`, `select()`, etc.) pass column names as **strings** or tidyselect helpers—not bare symbols—when writing programming‑style code:
+
+  ```r
+  iris |>
+    mutate(
+      across(c("Sepal.Length", "Sepal.Width"), ~ .x + 1),
+      Species = paste(.data$Species, "test")
+    )
+  ```
+
+* For **ggplot2 aesthetics**, use the same pronouns to avoid global‑variable notes:
+
+  ```r
+  ggplot(iris, aes(x = .data$Sepal.Length, y = .data$Sepal.Width)) +
+    geom_point()
+  ```
+
+* When constructing expressions programmatically, use **rlang** helpers:
+
+  ```r
+  col <- "value"
+  df |> summarise(total = sum(.data[[col]]))
+
+  # or
+  sym_col <- rlang::ensym(col)
+  df |> summarise(total = sum(!!sym_col))
+  ```
+
+* Resort to `utils::globalVariables()` **only** when tidy‑eval pronouns cannot be applied (e.g., column names produced dynamically by external code). Document the rationale in comments.
+
+---
+
+By following these uniform guidelines, R code will remain consistent, readable, and maintainable across different projects.

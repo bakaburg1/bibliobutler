@@ -15,7 +15,7 @@ Imports:
     stringr (>= 1.5.1),
     jsonlite (>= 1.8.9),
     crayon (>= 1.5.3),
-    openalexR (>= 1.4.0),
+    openalexR (>= 2.0.1),
     httr2 (>= 1.0.6),
     humaniformat (>= 0.6.0),
     mirai (>= 1.3.1),
