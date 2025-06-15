@@ -2,18 +2,33 @@
 % Please edit documentation in R/openalex.R
 \name{oa_prepare_ids}
 \alias{oa_prepare_ids}
-\title{Prepare IDs for openalexR}
+\title{Prepare and validate IDs for OpenAlex API}
 \usage{
 oa_prepare_ids(ids)
 }
 \arguments{
-\item{ids}{character vector}
+\item{ids}{Character vector of identifiers in various formats}
 }
 \value{
-A list with one element named after the ID type provided (\code{doi},
-\code{pmid}, or \code{openalex}).
+List of ID information, where each element contains:
+\itemize{
+\item \code{type} - One of "doi", "pmid", "pmcid", or "openalex"
+\item \code{id} - Cleaned and standardized ID string
+}
 }
 \description{
-Given a character vector of IDs (DOI, PMID, or full OpenAlex IDs), return a
-list with only the provided ID type.
+This function takes a vector of mixed identifier types and formats them
+for use with the OpenAlex API. It automatically detects ID types (DOI,
+PMID, PMC ID, OpenAlex ID) and standardizes their format.
 }
+\details{
+ID type detection rules:
+\itemize{
+\item OpenAlex IDs: URLs starting with "https://openalex.org/W" or strings matching "W\\d+"
+\item DOIs: Strings starting with "10."
+\item PMIDs: Numeric strings (digits only)
+\item PMC IDs: Strings matching "PMC\\d+" (case insensitive)
+\item Other: Treated as DOI by default
+}
+}
+\keyword{internal}

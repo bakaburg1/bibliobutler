@@ -2,21 +2,35 @@
 % Please edit documentation in R/openalex.R
 \name{oa_process_response}
 \alias{oa_process_response}
-\title{Process the openalexR result to a standard format}
+\title{Process OpenAlex API response to standardized format}
 \usage{
 oa_process_response(data)
 }
 \arguments{
-\item{data}{The tibble/data.frame returned from
-\code{openalexR::oa_fetch(...)} with a set of sanitized columns at the
-beginning, identified by a dot prefix.}
+\item{data}{Raw data frame from OpenAlex API response}
 }
 \value{
-A data frame with standardized columns.
+Standardized data frame with package-specific column names and formats:
+\itemize{
+\item \code{.record_name} - Sequential record identifiers
+\item \code{.paperId} - OpenAlex work IDs (cleaned of URL prefixes)
+\item \code{.url} - Open access URLs when available
+\item \code{.title} - Article titles
+\item \code{.abstract} - Reconstructed abstracts from inverted index
+\item \code{.authors} - Parsed and formatted author names
+\item \code{.year} - Publication years
+\item \code{.journal} - Journal names from primary location
+\item \code{.pubtype} - Publication types
+\item \code{.is_open_access} - Open access status flags
+\item \code{.references} - List column of referenced work IDs
+\item \code{.related} - List column of related work IDs
+\item \code{.api} - Source API identifier ("openalex")
+\item \code{.ids} - List column of data frames with all available IDs
+}
 }
 \description{
-Similar to \code{s2_process_response()}, we want columns like: paperId,
-title, abstract, authors, year, journal, pubtype, .references (list),
-.citations (empty by default), .related (list), .api = "openalex", .ids
-(data.frame with openalex, doi, pmid, etc.)
+This function transforms raw OpenAlex API response data into the standardized
+data frame format used throughout the package. It extracts and processes
+various fields including authors, abstracts, references, and metadata.
 }
+\keyword{internal}

@@ -1,39 +1,64 @@
-#' Retrieve Articles from OpenAlex (via openalexR)
+#' Retrieve Articles from OpenAlex API (Direct httr2 Implementation)
 #'
-#' This function provides an interface similar to
-#' \code{get_semanticscholar_articles()}, but calls the
-#' \code{openalexR::oa_fetch()} function internally to query the OpenAlex
-#' database of scholarly works. You can fetch works by ID (DOI, PMID, or
-#' OpenAlex ID), or by a search query. Additional OpenAlex filters and a year
-#' range can also be specified.
+#' This function provides a direct implementation of OpenAlex API access using
+#' httr2, offering better performance through parallel HTTP requests and more
+#' control over API interactions. It follows the same interface patterns as
+#' other API functions in the package.
 #'
-#' @param ids A character vector of identifiers (DOI, PMID, or OpenAlex IDs).
-#'   Example of OpenAlex IDs: \code{"https://openalex.org/W2741809807"}.
-#' @param query A character string to match in titles/abstracts (similar to a
-#'   free-text search). Only one of \code{ids} or \code{query} can be non-NULL.
-#' @param year_filter Publication year or range (e.g., \code{"2019"},
-#'   \code{"2016-2020"}, \code{"2010-"}, \code{"-2015"}). If provided, it
-#'   overrides any year filter in the \code{filters} list. Internally converted
-#'   to OpenAlex date filters.
-#' @param filters A named list of additional filters to pass to
-#'   \code{openalexR}. For example, \code{filters = list(is_oa = TRUE, type =
-#'   "journal-article")}. See \code{\link[openalexR]{oa_query}} for details.
-#' @param fields A character vector of fields to return. In \code{openalexR},
-#'   you would typically pass these via \code{options = list(select = fields)}.
-#'   If \code{NULL}, all default columns from \code{openalexR} are retrieved.
-#' @param per_page Approximate number of results fetched per page (default 100).
-#'   Passed to \code{openalexR::oa_fetch(..., per_page = ...)}.
-#' @param max_results Maximum number of total results to return (default
-#'   \code{Inf}). If your query matches more records than \code{max_results},
-#'   the rest are omitted.
+#' @param ids A character vector of identifiers (DOI, PMID, PMC ID, or OpenAlex
+#'   IDs). OpenAlex IDs can be provided as full URLs (e.g.,
+#'   `"https://openalex.org/W2741809807"`) or as short IDs (e.g.,
+#'   `"W2741809807"`). DOIs should be provided without the "doi:" prefix. PMIDs
+#'   should be numeric strings. PMC IDs should include the "PMC" prefix.
+#' @param query A character string to search for in titles/abstracts/fulltext.
+#'   Only one of `ids` or `query` can be non-NULL.
+#' @param year_filter Publication year or range (e.g., `"2019"`, `"2016-2020"`,
+#'   `"2010-"`, `"-2015"`). If provided, it overrides any year filter in the
+#'   `filters` list.
+#' @param filters A named list of additional filters to pass to OpenAlex. For
+#'   example, `filters = list(is_oa = TRUE, type = "journal-article")`. See
+#'   OpenAlex API documentation for available filters.
+#' @param fields A character vector of fields to return. If `NULL`, default
+#'   fields are used (id, doi, title, abstract_inverted_index, authorships,
+#'   publication_year, publication_date, primary_location, locations, type,
+#'   type_crossref, open_access, cited_by_count, referenced_works,
+#'   related_works, ids).
+#' @param per_page Number of results per page (default 200, max 200).
+#' @param max_results Maximum number of total results to return (default `Inf`).
+#'   If your query matches more records than `max_results`, the rest are
+#'   omitted.
 #'
-#' @return A data frame of article data from OpenAlex, with a set of sanitized
-#'   columns at the beginning, identified by a dot prefix.
+#' @return A data frame of article data from OpenAlex with standardized
+#'   columns following the package conventions:
+#'   \itemize{
+#'     \item `.record_name` - Unique record identifier (e.g., "openalex_1")
+#'     \item `.paperId` - OpenAlex work ID (without URL prefix)
+#'     \item `.url` - Open access URL if available
+#'     \item `.title` - Article title
+#'     \item `.abstract` - Article abstract (reconstructed from inverted index)
+#'     \item `.authors` - Formatted author names (parsed and standardized)
+#'     \item `.year` - Publication year
+#'     \item `.journal` - Journal/venue name from primary location
+#'     \item `.pubtype` - Publication type (e.g., "journal-article")
+#'     \item `.is_open_access` - Logical indicating open access status
+#'     \item `.references` - List column of referenced work IDs
+#'     \item `.related` - List column of related work IDs
+#'     \item `.api` - Source API identifier ("openalex")
+#'     \item `.ids` - List column of data frames containing all available IDs
+#'   }
 #'
 #' @examples \dontrun{
 #' # Get by specific DOIs
 #' get_openalex_articles(ids =
 #'   c("10.1371/journal.pone.0266781", "10.1371/journal.pone.0267149"))
+#'
+#' # Get by OpenAlex IDs (full URL or short form)
+#' get_openalex_articles(
+#'   ids = c("W2741809807", "https://openalex.org/W123456")
+#' )
+#'
+#' # Get by PMIDs
+#' get_openalex_articles(ids = c("12345678", "87654321"))
 #'
 #' # Search for works with "machine learning" in title/abstract
 #' get_openalex_articles(query = "machine learning")
@@ -56,26 +81,15 @@ get_openalex_articles <- function(
   per_page = 200,
   max_results = Inf
 ) {
-  # Ensure only one of `ids` or `query`
+  # Input validation
   if (!is.null(ids) && !is.null(query)) {
     stop("Use only one of `ids` or `query` as arguments.")
   }
-
-  # If user gave a year_filter, incorporate it into filters, overriding any
-  # existing year
-  if (!is.null(year_filter)) {
-    # parse year_filter into from_year and to_year
-    yr_list <- oa_parse_year_filter(year_filter)
-    # The user might also have some existing filters they want to combine
-    if (is.null(filters)) {
-      filters <- list()
-    }
-    # Overwrite from/to publication date
-    filters$from_publication_date <- yr_list$from
-    filters$to_publication_date <- yr_list$to
+  if (is.null(ids) && is.null(query)) {
+    stop("Either `ids` or `query` must be provided.")
   }
 
-  # Prepare the default fields
+  # Prepare default fields
   default_fields <- c(
     "id",
     "doi",
@@ -83,166 +97,51 @@ get_openalex_articles <- function(
     "abstract_inverted_index",
     "authorships",
     "publication_year",
+    "publication_date",
     "primary_location",
+    "locations",
     "type",
     "type_crossref",
+    "open_access",
+    "cited_by_count",
+    "referenced_works",
+    "related_works",
     "ids"
   )
 
-  fields <- (fields %||% default_fields) |>
-    unique() |>
-    paste(collapse = ",")
+  fields <- fields %||% default_fields
+  select_param <- paste(fields, collapse = ",")
 
-  # If ids are provided, remove 'authorships' from the selected fields to avoid conversion errors
-  # if (!is.null(ids)) {
-  #   fields <- gsub("authorships,?", "", fields)
-  #   fields <- gsub(",,", ",", fields)
-  #   fields <- trimws(fields, which = "both", whitespace = ",")
-  # }
-
-  # Prepare the arguments for oa_fetch
-  # We want to handle IDs separately from queries
-  oa_args <- list(
-    entity = "works",
-    abstract = TRUE, # fetch abstracts by default
-    per_page = per_page,
-    paging = "page",
-    mailto = getOption("bibliobutler.openalex_email"),
-    api_key = getOption("bibliobutler.openalex_key"),
-    verbose = getOption("bibliobutler.dev_mode", FALSE),
-    # openalexR uses `options = list(select=...)` to specify fields
-    options = if (!is.null(fields)) list(select = fields) else NULL
-  )
-
-  # Additional filters can be passed as `filter` in openalexR
-  if (!is.null(filters)) {
-    # We assume user is passing a list suitable for openalexR
-    oa_args <- c(oa_args, filters)
+  # Parse year filter if provided
+  if (!is.null(year_filter)) {
+    year_params <- oa_parse_year_filter(year_filter)
+    if (is.null(filters)) filters <- list()
+    if (!is.null(year_params$from)) filters$from_publication_date <- year_params$from
+    if (!is.null(year_params$to)) filters$to_publication_date <- year_params$to
   }
 
-  # If we have IDs, parse them (DOI, PMID, or full OpenAlex ID)
+  # Process IDs or query
   if (!is.null(ids)) {
-    # Convert user IDs to the appropriate openalexR arguments
-    parsed_ids <- oa_prepare_ids(ids)
-    # Based on type, place into the correct parameters for `oa_fetch` If
-    # multiple types appear, we need to do multiple calls or raise a warning For
-    # simplicity, we can attempt to do them in a single call, because openalexR
-    # supports e.g. doi=vec_of_dois, pmid=vec_of_pmids, id=vec_of_openalex_ids
-    # But we must separate them out by type:
-    if (length(parsed_ids$doi) > 0) {
-      oa_args$doi <- parsed_ids$doi
-    }
-    if (length(parsed_ids$pmid) > 0) {
-      oa_args$pmid <- parsed_ids$pmid
-    }
-    if (length(parsed_ids$openalex) > 0) {
-      oa_args$identifier <- parsed_ids$openalex
-      # Workaround for openalexR bug: Single identifiers cause errors by
-      # ignoring count_only. Duplicate the ID to force count_only to work.
-      # Results will show one record only anyway
-      if (length(oa_args$identifier) == 1) {
-        oa_args$identifier <- rep(oa_args$identifier, 2)
-      }
-    }
-
-    # If user had a big mixture of IDs, some might be missing.
-    # openalexR typically returns fewer rows if some IDs didn't match.
+    # Handle ID-based requests
+    results <- oa_fetch_by_ids(ids, select_param, filters, per_page, max_results)
   } else {
-    # handle the search query. openalexR offers a `search` parameter for
-    # free-text searching:
-    oa_args$search <- query
+    # Handle search-based requests
+    results <- oa_fetch_by_query(query, select_param, filters, per_page, max_results)
   }
 
-  # For ID-based queries, we know the count upfront
-  if (!is.null(ids)) {
-    request_info <- data.frame(
-      count = length(ids),
-      db_response_time_ms = NA,
-      page = 1,
-      per_page = per_page
-    )
-  } else {
-    # For search queries, get the count from OpenAlex
-    request_info <- withCallingHandlers(
-      # Wrap to restyle messages
-      do.call(openalexR::oa_fetch, c(oa_args, count_only = TRUE)),
-      message = \(m) {
-        msg_status(m$message)
-        invokeRestart("muffleMessage")
-      }
-    ) |>
-      as.data.frame()
+  # Process and standardize the response
+  if (getOption("bibliobutler.dev_mode", FALSE)) {
+    msg_status("🔍 DEBUG: Raw results before processing: {nrow(results)} rows")
   }
-
-  msg_info("Total results: {request_info$count} for query")
-
-  if (request_info$count > max_results) {
-    msg_info("(retrieving first {max_results} results)")
-  }
-
-  # Get the corresponding number of pages to fetch
-  pages <- ceiling(
-    min(request_info$count, max_results, na.rm = TRUE) / per_page
-  )
-
-  msg_status("Fetching {pages} pages of OpenAlex results")
-
-  # Fetch the results in parallel
-  # Use the daemons defined by the user (if any). We avoid spawning workers
-  # inside the package to comply with mirai best-practices.
-  fetch_page <- \(page, oa_args) {
-    # Simple fetch without retry - let mirai handle retries at a higher level
-    results <- try(do.call(openalexR::oa_fetch, c(oa_args, pages = page)), silent = TRUE)
-    if (!is.data.frame(results) || inherits(results, "try-error")) {
-      stop("OpenAlex fetch failed for page ", page)
-    }
-    results
-  }
-
-  # For now, disable parallel processing for OpenAlex due to API complexity
-  # Use sequential processing to avoid issues with openalexR in workers
-  results_pages <- purrr::map(
-    seq_len(pages),
-    fetch_page,
-    oa_args = oa_args
-  )
-
-  no_result_pages <- purrr::map_lgl(
-    results_pages,
-    \(x) {
-      rlang::is_empty(x) ||
-        (is.character(x) && grepl("error", x, ignore.case = TRUE))
-    }
-  ) |>
-    sum()
-
-  if (no_result_pages > 0) {
-    stop(stringr::str_glue(
-      "Failed to fetch all OpenAlex results. ",
-      "({no_result_pages} with no results)"
-    ))
-  }
-
-  # Aggregate results
-  results <- try(bind_rows(results_pages), silent = TRUE)
-
-  if (inherits(results, "try-error")) {
-    msg_error("Failed to bind OpenAlex results")
-    if (getOption("bibliobutler.dev_mode", FALSE)) {
-      browser()
-    } else stop()
-  }
-
-  # Trim to max_results
-  results <- head(results, max_results)
-
-  msg_success("Fetched {nrow(results)} results from OpenAlex")
-
   output <- oa_process_response(results)
+  if (getOption("bibliobutler.dev_mode", FALSE)) {
+    msg_status("🔍 DEBUG: Processed results: {nrow(output)} rows")
+  }
 
-  # If no results, warn
   if (nrow(output) == 0) {
     msg_warn("No OpenAlex results found for the given input.")
+  } else {
+    msg_success("Fetched {nrow(output)} results from OpenAlex")
   }
 
   output
@@ -250,32 +149,75 @@ get_openalex_articles <- function(
 
 #' Get linked articles (references, citations, or related) from OpenAlex
 #'
-#' @param ids A character vector of identifiers (DOI, PMID, or OpenAlex IDs).
-#' @param links A character vector specifying which types of linked articles to
-#'   retrieve. Any combination of \code{c("citations", "references",
-#'   "related")}.
+#' This function retrieves linked articles (references, citations, or related
+#' works) for given article IDs using the OpenAlex API. It uses the new
+#' httr2-based implementation for better performance and reliability.
 #'
-#' @return A named list containing up to three data frames: \code{references},
-#'   \code{citations}, \code{related}. Each data frame has columns:
+#' @param ids A character vector of identifiers (DOI, PMID, PMC ID, or OpenAlex
+#'   IDs). OpenAlex IDs can be provided as full URLs or short IDs. See
+#'   `get_openalex_articles()` for details on supported ID formats.
+#' @param links A character vector specifying which types of linked articles to
+#'   retrieve. Any combination of `c("citations", "references", "related")`.
+#'   Default is all three types.
+#' @param max_results Maximum number of results to return for citations
+#'   (references and related works are limited by what's available in the source
+#'   articles).
+#'
+#' @return A named list containing up to three data frames: `references`,
+#'   `citations`, `related`. Each data frame has columns:
 #'   \itemize{
-#'     \item \code{source_id} - the queried ID
-#'     \item \code{linked_id} - an OpenAlex ID (or other ID if convertible)
+#'     \item `source_id` - The OpenAlex ID of the queried article
+#'       (without URL prefix)
+#'     \item `linked_id` - The OpenAlex ID of the linked article
+#'       (without URL prefix)
 #'   }
+#'
+#'   Note: References and related works are extracted directly from the source
+#'   articles' metadata. Citations are found by querying for works that cite
+#'   the input articles.
 #'
 #' @examples
 #' \dontrun{
+#' # Get all types of linked articles for a single DOI
 #' get_openalex_linked("10.1371/journal.pone.0266781")
+#' 
+#' # Get only citations and references for multiple articles
 #' get_openalex_linked(
 #'   c("10.1371/journal.pone.0266781", "10.1371/journal.pone.0267149"),
 #'   links = c("citations", "references")
+#' )
+#' 
+#' # Get only references with OpenAlex IDs
+#' get_openalex_linked(
+#'   c("W2741809807", "W123456789"),
+#'   links = "references"
 #' )
 #' }
 #' @export
 get_openalex_linked <- function(
   ids,
-  links = c("citations", "references", "related")
+  links = c("citations", "references", "related"),
+  max_results = Inf
 ) {
   links <- match.arg(links, several.ok = TRUE)
+
+  # Helper: given source_ids and a list column of linked IDs, return a
+  # data.frame
+  build_link_df <- function(source_ids, linked_list) {
+    out <- vector("list", length(source_ids))
+    for (i in seq_along(source_ids)) {
+      if (length(linked_list[[i]]) == 0 || all(is.na(linked_list[[i]]))) {
+        out[[i]] <- NULL
+      } else {
+        out[[i]] <- data.frame(
+          source_id = rep(source_ids[i], length(linked_list[[i]])),
+          linked_id = linked_list[[i]],
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+    if (length(out)) do.call(rbind, out) else data.frame()
+  }
 
   # Initialize empty data frames
   out <- list(
@@ -284,18 +226,12 @@ get_openalex_linked <- function(
     related = data.frame()
   )
 
-  fields <- c(
-    references = "referenced_works",
-    related = "related_works",
-    citations = "cited_by_api_url"
-  )
-
   msg_status("Fetching general article data for {length(ids)} IDs")
 
-  # Fetch the works themselves, in order to parse references & related
+  # Fetch the works themselves to get references and related works
   works_df <- get_openalex_articles(
     ids = ids,
-    fields = c("ids", fields[links])
+    fields = c("id", "doi", "referenced_works", "related_works")
   )
 
   if (nrow(works_df) == 0) {
@@ -303,307 +239,732 @@ get_openalex_linked <- function(
     return(out)
   }
 
-  # Process references and related links
-  for (link_type in c("references", "related")) {
-    link_col <- paste0(".", link_type)
-    if (link_type %in% links) {
-      # Extract relevant columns and unnest
-      df <- works_df |>
-        select(".ids", all_of(link_col)) |>
-        mutate(
-          # Prefer DOI followed by OpenAlex ID
-          source_id = with(
-            .data$.ids,
-            coalesce(
-              doi,
-              openalex
-            )
-          ),
-          .ids = NULL
-        ) |>
-        tidyr::unnest(all_of(link_col), keep_empty = TRUE) |>
-        select("source_id", linked_id = all_of(link_col)) |>
-        filter(!is.na(.data$linked_id))
+  # Vector of OpenAlex IDs (already without URL prefix)
+  source_ids_vec <- works_df$.paperId
 
-      out[[link_type]] <- df
-    }
+  # Process references and related links using lightweight helper
+  if ("references" %in% links && ".references" %in% names(works_df)) {
+    out$references <- build_link_df(source_ids_vec, works_df$.references)
+  }
+  if ("related" %in% links && ".related" %in% names(works_df)) {
+    out$related <- build_link_df(source_ids_vec, works_df$.related)
   }
 
-  # Citations are not in the works list, but we need to fetch them with an
-  # ad-hoc query
+  # Handle citations separately - need to query works that cite these IDs
   if ("citations" %in% links) {
-    citations_ids <- works_df$.ids$openalex
+    openalex_ids <- source_ids_vec
 
-    id_translator <- coalesce(works_df$.ids$doi, works_df$.ids$openalex) |>
-      purrr::set_names(works_df$.ids$openalex)
+    # Create filter for works that cite any of our IDs
+    cites_filter <- paste(openalex_ids, collapse = "|")
 
-    # Can only fetch 100 citations at a time
-    batches <- split(citations_ids, ceiling(seq_along(citations_ids) / 100))
+    msg_status("Fetching citations for {length(openalex_ids)} IDs")
 
-    msg_status("Fetching citations for {length(citations_ids)} IDs")
-
-    # For now, disable parallel processing for OpenAlex citations
-    results <- purrr::map(
-      batches,
-      \(batch) {
-        citations <- get_openalex_articles(
-          filters = list(cites = paste(batch, collapse = "|")),
-          fields = c("id", "referenced_works")
-        )
-
-        # Infer the source_id for each citation
-        oa_ids <- citations$referenced_works |>
-          purrr::map_chr(\(x) {
-            intersect(remove_url_from_id(x), citations_ids) |>
-              paste(collapse = ",")
-          })
-
-        data.frame(
-          source_id = id_translator[oa_ids],
-          linked_id = citations$.paperId
-        )
-      }
+    citations_df <- oa_fetch_by_query(
+      query = NULL,
+      select_param = "id,referenced_works",
+      filters = list(cites = cites_filter),
+      per_page = 200,
+      max_results = max_results
     )
 
-    out$citations <- dplyr::bind_rows(results)
+    if (nrow(citations_df) > 0) {
+      citations_processed <- oa_process_response(citations_df)
+
+      # Build citation edges without tidyverse
+      cit_out <- list()
+      for (i in seq_len(nrow(citations_processed))) {
+        refs <- citations_processed$.references[[i]]
+        if (length(refs)) {
+          # keep only refs that are in our original set
+          refs <- refs[refs %in% openalex_ids]
+          if (length(refs)) {
+            cit_out[[length(cit_out) + 1]] <- data.frame(
+              source_id = refs,
+              linked_id = rep(citations_processed$.paperId[i], length(refs)),
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+      if (length(cit_out)) out$citations <- do.call(rbind, cit_out)
+    }
   }
 
   out
 }
 
-#' Prepare IDs for openalexR
+#' Fetch OpenAlex works by IDs using parallel HTTP requests
 #'
-#' Given a character vector of IDs (DOI, PMID, or full OpenAlex IDs), return a
-#' list with only the provided ID type.
+#' This function handles ID-based queries to the OpenAlex API with intelligent
+#' batching and parallel processing. It automatically groups IDs by type (DOI,
+#' PMID, PMC ID, OpenAlex ID) and respects the API's 50-ID limit per filter type
+#' by creating multiple batches when necessary.
 #'
-#' @param ids character vector
+#' @param ids Character vector of prepared IDs (output from oa_prepare_ids)
+#' @param select_param Comma-separated string of fields to select from the API
+#' @param filters List of additional filters to apply to the query
+#' @param per_page Number of results per page (max 200)
+#' @param max_results Maximum number of results to return
 #'
-#' @return A list with one element named after the ID type provided (`doi`,
-#'   `pmid`, or `openalex`).
+#' @return Data frame of raw results from the OpenAlex API
 #'
+#' @keywords internal
+oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
+  # Prepare and validate IDs
+  prepared_ids <- oa_prepare_ids(ids)
+  
+  msg_info("Total results: {length(prepared_ids)} for ID query")
+  
+  if (length(prepared_ids) > max_results) {
+    msg_info("(retrieving first {max_results} results)")
+    prepared_ids <- head(prepared_ids, max_results)
+  }
+
+  # Build helper to convert a named list of ids-by-type into query params
+  make_query <- function(type_vec) {
+    filter_parts <- purrr::imap_chr(type_vec, ~ paste0(.y, ":", paste(.x, collapse = "|")))
+    list(
+      filter   = paste(filter_parts, collapse = ","),
+      select   = select_param,
+      per_page = min(per_page, 200)
+    )
+  }
+
+  # Split IDs by type (doi / pmid / openalex / pmcid)
+  ids_by_type <- split(prepared_ids, purrr::map_chr(prepared_ids, ~ .x$type))
+  ids_by_type <- purrr::map(ids_by_type, ~ purrr::map_chr(.x, `[[`, "id"))
+
+  # Check if every id vector is <=50 → single call path
+  if (all(purrr::map_int(ids_by_type, ~ length(.x)) <= 50)) {
+    msg_status("Using single OpenAlex call (<=50 ids per attribute)")
+    query_params <- make_query(ids_by_type)
+    resp <- oa_make_api_call("https://api.openalex.org/works", "GET", query = query_params)
+    out_df <- if (!is.null(resp$results)) {
+      as.data.frame(resp$results, stringsAsFactors = FALSE)
+    } else {
+      data.frame()
+    }
+    return(out_df)
+  }
+
+  # Otherwise, build batches respecting the 50-id rule per attribute  
+  # Determine number of chunks needed per type
+  chunks_per_type <- purrr::map_int(ids_by_type, ~ ceiling(length(.x)/50))
+  max_chunks <- max(chunks_per_type)
+
+  batch_list <- vector("list", max_chunks)
+  for (i in seq_len(max_chunks)) {
+    slice_by_type <- purrr::map(ids_by_type, \(vec) {
+      start <- (i-1)*50 + 1
+      end   <- min(i*50, length(vec))
+      if (start > length(vec)) return(character(0))
+      vec[start:end]
+    })
+    # remove empty
+    slice_by_type <- slice_by_type[lengths(slice_by_type) > 0]
+    if (length(slice_by_type)) {
+      batch_list[[i]] <- make_query(slice_by_type)
+    }
+  }
+  # Drop NULL (if some chunks had no ids)
+  batch_list <- batch_list[!purrr::map_lgl(batch_list, ~ is.null(.x))]
+
+  msg_status("Fetching {length(batch_list)} OpenAlex ID batches in parallel…")
+
+  # Create request objects
+  reqs <- purrr::map(batch_list, ~ oa_make_api_call(
+    "https://api.openalex.org/works",
+    "GET",
+    query = .x,
+    as_req = TRUE
+  ))
+
+  # Perform in parallel (if more than one batch) or sequential
+  if (length(reqs) == 1) {
+    resps <- list(httr2::req_perform(reqs[[1]]))
+  } else {
+    resps <- httr2::req_perform_parallel(reqs, on_error = "continue")
+  }
+
+  # Parse responses
+  all_results <- purrr::map(resps, \(resp) {
+    if (inherits(resp, "httr2_response")) {
+      dat <- httr2::resp_body_json(resp, simplifyVector = TRUE)
+      if (!is.null(dat$results)) {
+        if (is.data.frame(dat$results)) {
+          return(dat$results)
+        } else {
+          return(as.data.frame(dat$results, stringsAsFactors = FALSE))
+        }
+      }
+    }
+    data.frame()
+  })
+
+  combined <- dplyr::bind_rows(all_results)
+  combined
+}
+
+#' Fetch OpenAlex works by search query
+#'
+#' This function handles search-based queries to the OpenAlex API with automatic
+#' pagination. For small queries (≤3 pages), it uses sequential processing to
+#' avoid overhead. For larger queries, it uses parallel HTTP requests for
+#' better performance.
+#'
+#' @param query Search query string (can be NULL for filter-only queries)
+#' @param select_param Comma-separated string of fields to select from the API
+#' @param filters List of additional filters to apply to the query
+#' @param per_page Number of results per page (max 200)
+#' @param max_results Maximum number of results to return
+#'
+#' @return Data frame of raw results from the OpenAlex API
+#'
+#' @keywords internal
+oa_fetch_by_query <- function(query, select_param, filters, per_page, max_results) {
+  # First, get the total count
+  count_params <- list(
+    per_page = 1
+  )
+  
+  # Add search query if provided
+  if (!is.null(query)) {
+    count_params$search <- query
+  }
+  
+  # Add filters to count query
+  if (!is.null(filters)) {
+    filter_strings <- purrr::imap_chr(filters, ~ paste0(.y, ":", .x))
+    count_params$filter <- paste(filter_strings, collapse = ",")
+  }
+
+  count_resp <- oa_make_api_call(
+    "https://api.openalex.org/works",
+    "GET",
+    query = count_params
+  )
+
+  total_count <- count_resp$meta$count %||% 0
+  msg_info("Total results: {total_count} for search query")
+
+  if (total_count == 0) {
+    return(data.frame())
+  }
+
+  if (total_count > max_results) {
+    msg_info("(retrieving first {max_results} results)")
+    total_count <- max_results
+  }
+
+  # Calculate number of pages needed
+  pages_needed <- ceiling(total_count / per_page)
+  msg_status("Fetching {pages_needed} pages of OpenAlex results")
+
+  # For small queries, use sequential processing to avoid overhead
+  if (pages_needed <= 3) {
+    # Sequential processing for small queries
+    all_results <- list()
+    for (page in seq_len(pages_needed)) {
+      query_params <- list(
+        select = select_param,
+        per_page = per_page,
+        page = page
+      )
+      
+      # Add search query if provided
+      if (!is.null(query)) {
+        query_params$search <- query
+      }
+      
+      # Add filters
+      if (!is.null(filters)) {
+        filter_strings <- purrr::imap_chr(filters, ~ paste0(.y, ":", .x))
+        query_params$filter <- paste(filter_strings, collapse = ",")
+      }
+
+      resp_data <- oa_make_api_call(
+        "https://api.openalex.org/works",
+        "GET",
+        query = query_params
+      )
+      
+      if (!is.null(resp_data$results)) {
+        all_results[[page]] <- as.data.frame(resp_data$results, stringsAsFactors = FALSE)
+      }
+    }
+  } else {
+    # Parallel processing for large queries
+    reqs <- purrr::map(seq_len(pages_needed), \(page) {
+      query_params <- list(
+        select = select_param,
+        per_page = per_page,
+        page = page
+      )
+      
+      # Add search query if provided
+      if (!is.null(query)) {
+        query_params$search <- query
+      }
+      
+      # Add filters
+      if (!is.null(filters)) {
+        filter_strings <- purrr::imap_chr(filters, ~ paste0(.y, ":", .x))
+        query_params$filter <- paste(filter_strings, collapse = ",")
+      }
+
+      oa_make_api_call(
+        "https://api.openalex.org/works",
+        "GET",
+        query = query_params,
+        as_req = TRUE
+      )
+    })
+
+    # Perform requests in parallel
+    resps <- httr2::req_perform_parallel(reqs, on_error = "continue")
+
+    # Process responses
+    all_results <- purrr::map(resps, \(resp) {
+      if (inherits(resp, "httr2_response")) {
+        json_resp <- httr2::resp_body_json(resp, simplifyVector = TRUE)
+        if (!is.null(json_resp$results)) {
+          # Check if results is already a data frame (single result) or needs conversion
+          if (is.data.frame(json_resp$results)) {
+            return(json_resp$results)
+          } else {
+            # Multiple results - convert to data frame
+            return(as.data.frame(json_resp$results, stringsAsFactors = FALSE))
+          }
+        }
+      } else {
+        msg_warn("Failed to fetch a page: {conditionMessage(resp)}")
+      }
+      return(data.frame())
+    })
+  }
+
+  # Combine all results and limit to max_results
+  results <- dplyr::bind_rows(all_results)
+  head(results, max_results)
+}
+
+#' Make OpenAlex API call using httr2
+#'
+#' This function creates and executes HTTP requests to the OpenAlex API using
+#' httr2. It includes automatic retry logic, proper user agent configuration,
+#' and support for API keys. Can return either the response data or the
+#' request object for use in parallel processing.
+#'
+#' @param url API endpoint URL
+#' @param method HTTP method (default "GET")
+#' @param query Named list of query parameters to include in the URL
+#' @param body Request body (for POST requests)
+#' @param as_req If TRUE, return httr2 request object instead of performing request
+#'
+#' @return If `as_req = FALSE`, returns parsed JSON response. If `as_req = TRUE`,
+#'   returns httr2 request object for use with `httr2::req_perform_parallel()`.
+#'   
+#' @details The function automatically includes:
+#'   - User agent string with package name and email (if configured)
+#'   - API key from `getOption("bibliobutler.openalex_key")` if available
+#'   - 30-second timeout
+#'   - Retry logic (3 attempts with exponential backoff)
+#'   - Debug logging when `getOption("bibliobutler.dev_mode")` is TRUE
+#'   
+#' @keywords internal
+oa_make_api_call <- function(url, method = "GET", query = NULL, body = NULL, as_req = FALSE) {
+  # Get email and API key from options
+  email <- getOption("bibliobutler.openalex_email")
+  api_key <- getOption("bibliobutler.openalex_key")
+  
+  # Build user agent string
+  user_agent <- "bibliobutler R package"
+  if (!is.null(email)) {
+    user_agent <- paste0(user_agent, " (mailto:", email, ")")
+  }
+
+  # Debug: print request details
+  if (getOption("bibliobutler.dev_mode", FALSE)) {
+    msg_status("🔍 DEBUG: URL: {url}")
+    msg_status("🔍 DEBUG: User-Agent: {user_agent}")
+    if (!is.null(query)) {
+      msg_status("🔍 DEBUG: Query params: {paste(names(query), query, sep='=', collapse=', ')}")
+    }
+  }
+
+  # Create base request
+  req <- httr2::request(url) |>
+    httr2::req_user_agent(user_agent) |>
+    httr2::req_timeout(30)
+
+  # Add API key if available
+  if (!is.null(api_key)) {
+    req <- req |> httr2::req_url_query(api_key = api_key)
+  }
+
+  # Add query parameters
+  if (!is.null(query)) {
+    req <- req |> httr2::req_url_query(!!!query)
+  }
+
+  # Add body for POST requests
+  if (method == "POST" && !is.null(body)) {
+    req <- req |> 
+      httr2::req_method("POST") |>
+      httr2::req_body_json(body)
+  }
+
+  # Return request object if requested
+  if (as_req) {
+    return(req)
+  }
+
+  # Perform request with retry logic
+  resp <- req |>
+    httr2::req_retry(max_tries = 3, backoff = ~ 2^.x) |>
+    httr2::req_perform()
+
+  # Parse JSON response
+  httr2::resp_body_json(resp, simplifyVector = TRUE)
+}
+
+#' Prepare and validate IDs for OpenAlex API
+#'
+#' This function takes a vector of mixed identifier types and formats them
+#' for use with the OpenAlex API. It automatically detects ID types (DOI,
+#' PMID, PMC ID, OpenAlex ID) and standardizes their format.
+#'
+#' @param ids Character vector of identifiers in various formats
+#'
+#' @return List of ID information, where each element contains:
+#'   \itemize{
+#'     \item `type` - One of "doi", "pmid", "pmcid", or "openalex"
+#'     \item `id` - Cleaned and standardized ID string
+#'   }
+#'   
+#' @details ID type detection rules:
+#'   - OpenAlex IDs: URLs starting with "https://openalex.org/W" or strings matching "W\\d+"
+#'   - DOIs: Strings starting with "10."
+#'   - PMIDs: Numeric strings (digits only)
+#'   - PMC IDs: Strings matching "PMC\\d+" (case insensitive)
+#'   - Other: Treated as DOI by default
+#'   
+#' @keywords internal
 oa_prepare_ids <- function(ids) {
-  # Convert to character and remove NAs/empty strings
+  # Remove NAs and empty strings
   valid_ids <- ids |>
     as.character() |>
-    setdiff(NA_character_)
+    setdiff(c(NA_character_, ""))
 
-  # Return early if no valid IDs are passed
   if (length(valid_ids) == 0) {
     stop("All IDs are NA or empty.")
   }
 
-  # Convert or classify IDs using case_match
-  id_types <- dplyr::case_match(
-    get_article_id_type(valid_ids),
-    "doi" ~ "doi",
-    "pmid" ~ "pmid",
-    "openalex" ~ "openalex",
-    NA ~ NA_character_,
-    .default = "convert"
-  )
-
-  # Convert any IDs marked for conversion
-  to_convert <- which(id_types == "convert")
-
-  if (length(to_convert) > 0) {
-    converted <- convert_article_id(valid_ids[to_convert], to = "doi")
-    valid_ids[to_convert] <- converted
-    id_types[to_convert] <- "doi"
-  }
-
-  # Remove any NAs or NFs (ie, could not be converted)
-  valid_mask <- !is.na(id_types)
-  valid_ids <- valid_ids[valid_mask]
-  id_types <- id_types[valid_mask]
-
-  if (length(valid_ids) == 0) {
-    stop("No valid IDs after conversion.")
-  }
-
-  if (dplyr::n_distinct(id_types) > 1) {
-    stop("OpenAlex can accept only one ID type at once")
-  }
-
-  # Get the single ID type
-  id_type <- unique(id_types)
-
-  # Return list with single ID type
-  list(valid_ids) |> purrr::set_names(id_type)
+  # Determine ID type and clean each ID
+  purrr::map(valid_ids, \(id) {
+    # Clean the ID
+    clean_id <- trimws(id)
+    
+    # Determine the type and format
+    if (grepl("^https://openalex.org/W", clean_id)) {
+      # Full OpenAlex URL
+      list(type = "openalex", id = clean_id)
+    } else if (grepl("^W\\d+$", clean_id)) {
+      # OpenAlex ID without URL
+      list(type = "openalex", id = paste0("https://openalex.org/", clean_id))
+    } else if (grepl("^10\\.", clean_id)) {
+      # DOI
+      list(type = "doi", id = clean_id)
+    } else if (grepl("^\\d+$", clean_id)) {
+      # Likely PMID
+      list(type = "pmid", id = clean_id)
+    } else if (grepl("^PMC\\d+$", clean_id, ignore.case = TRUE)) {
+      # PMC ID
+      list(type = "pmcid", id = toupper(clean_id))
+    } else {
+      # Default to treating as DOI or other external ID
+      list(type = "doi", id = clean_id)
+    }
+  })
 }
 
-#' Attempt to find an OpenAlex ID URL for a given ID (which might be a DOI, PMID, etc.)
-#' Return `NA` if we can't resolve it.
-oa_find_id <- function(x) {
-  # If it's already an OpenAlex URL, return it
-  if (grepl("^https://openalex.org/", x)) {
-    return(x)
-  }
-
-  # Otherwise look up
-  tmp <- get_openalex_articles(ids = x, max_results = 1)
-  if (nrow(tmp) == 0) {
-    return(NA_character_)
-  }
-  # We can store the OpenAlex ID in the .ids sub-data-frame or
-  # we can store it in the "paperId" if it wasn't a known doi.
-  # By default, let's check .ids$openalex if available:
-  row_ids <- tmp$.ids[[1]]
-  if ("openalex" %in% names(row_ids)) {
-    return(row_ids[["openalex"]])
+#' Parse year filter for OpenAlex API
+#'
+#' This function converts various year filter formats into the date range
+#' format expected by the OpenAlex API (YYYY-MM-DD).
+#'
+#' @param year_filter Year filter string in one of several supported formats
+#'
+#' @return List with `from` and `to` date strings (YYYY-MM-DD format) or NULL values
+#'   
+#' @details Supported year filter formats:
+#'   - Single year: "2020" → from "2020-01-01" to "2020-12-31"
+#'   - Year range: "2018-2020" → from "2018-01-01" to "2020-12-31"
+#'   - Open-ended from: "2018-" → from "2018-01-01", no end date
+#'   - Open-ended to: "-2020" → no start date, to "2020-12-31"
+#'   
+#' @keywords internal
+oa_parse_year_filter <- function(year_filter) {
+  year_filter <- trimws(year_filter)
+  
+  if (grepl("^\\d{4}$", year_filter)) {
+    # Single year: "2020"
+    list(
+      from = paste0(year_filter, "-01-01"),
+      to = paste0(year_filter, "-12-31")
+    )
+  } else if (grepl("^\\d{4}-\\d{4}$", year_filter)) {
+    # Year range: "2018-2020"
+    parts <- strsplit(year_filter, "-")[[1]]
+    list(
+      from = paste0(parts[1], "-01-01"),
+      to = paste0(parts[2], "-12-31")
+    )
+  } else if (grepl("^\\d{4}-$", year_filter)) {
+    # Open-ended from: "2018-"
+    year <- sub("-$", "", year_filter)
+    list(
+      from = paste0(year, "-01-01"),
+      to = NULL
+    )
+  } else if (grepl("^-\\d{4}$", year_filter)) {
+    # Open-ended to: "-2020"
+    year <- sub("^-", "", year_filter)
+    list(
+      from = NULL,
+      to = paste0(year, "-12-31")
+    )
   } else {
-    # fallback
-    return(NA_character_)
+    warning("Could not parse year_filter '", year_filter, "'. Ignoring.", call. = FALSE)
+    list(from = NULL, to = NULL)
   }
 }
 
-#' Convert a user-supplied year range like "2016-2020" into from/to Publication Date
+#' Process OpenAlex API response to standardized format
 #'
-#' If user says "2016-2020", we map to from_publication_date="2016-01-01",
-#' to_publication_date="2020-12-31".
-#' If user says "2010-", we map to from_publication_date="2010-01-01",
-#' to_publication_date= Inf (represented as NULL or "9999-12-31" depending on your preference).
-#' If user says "-2015", we map from=NULL, to="2015-12-31".
+#' This function transforms raw OpenAlex API response data into the standardized
+#' data frame format used throughout the package. It extracts and processes
+#' various fields including authors, abstracts, references, and metadata.
 #'
-oa_parse_year_filter <- function(x) {
-  # remove whitespace
-  x <- trimws(x)
-  # possible forms: "YYYY", "YYYY-YYYY", "YYYY-", "-YYYY"
-  if (grepl("^\\d{4}$", x)) {
-    # single year
-    from <- paste0(x, "-01-01")
-    to <- paste0(x, "-12-31")
-  } else if (grepl("^\\d{4}-\\d{4}$", x)) {
-    # year-year
-    parts <- strsplit(x, "-")[[1]]
-    from <- paste0(parts[1], "-01-01")
-    to <- paste0(parts[2], "-12-31")
-  } else if (grepl("^\\d{4}-$", x)) {
-    # e.g. 2010-
-    yr <- sub("-$", "", x)
-    from <- paste0(yr, "-01-01")
-    to <- NULL
-  } else if (grepl("^-\\d{4}$", x)) {
-    # e.g. -2015
-    yr <- sub("^-", "", x)
-    from <- NULL
-    to <- paste0(yr, "-12-31")
-  } else {
-    warning("Could not parse year_filter '", x, "'. Ignoring.", call. = FALSE)
-    from <- NULL
-    to <- NULL
-  }
-  list(from = from, to = to)
-}
-
-#' Process the openalexR result to a standard format
+#' @param data Raw data frame from OpenAlex API response
 #'
-#' Similar to \code{s2_process_response()}, we want columns like: paperId,
-#' title, abstract, authors, year, journal, pubtype, .references (list),
-#' .citations (empty by default), .related (list), .api = "openalex", .ids
-#' (data.frame with openalex, doi, pmid, etc.)
-#'
-#' @param data The tibble/data.frame returned from
-#'   \code{openalexR::oa_fetch(...)} with a set of sanitized columns at the
-#'   beginning, identified by a dot prefix.
-#'
-#' @return A data frame with standardized columns.
-#'
+#' @return Standardized data frame with package-specific column names and formats:
+#'   \itemize{
+#'     \item `.record_name` - Sequential record identifiers
+#'     \item `.paperId` - OpenAlex work IDs (cleaned of URL prefixes)
+#'     \item `.url` - Open access URLs when available
+#'     \item `.title` - Article titles
+#'     \item `.abstract` - Reconstructed abstracts from inverted index
+#'     \item `.authors` - Parsed and formatted author names
+#'     \item `.year` - Publication years
+#'     \item `.journal` - Journal names from primary location
+#'     \item `.pubtype` - Publication types
+#'     \item `.is_open_access` - Open access status flags
+#'     \item `.references` - List column of referenced work IDs
+#'     \item `.related` - List column of related work IDs
+#'     \item `.api` - Source API identifier ("openalex")
+#'     \item `.ids` - List column of data frames with all available IDs
+#'   }
+#'   
+#' @keywords internal
 oa_process_response <- function(data) {
   if (nrow(data) == 0) {
-    return(data.frame()) # empty
+    return(data.frame())
   }
 
-  # Ensure authorship column exists; if missing, create as list-column of
-  # empty data.frames
-  if (!"authorships" %in% names(data)) {
-    authors_vec <- replicate(nrow(data), data.frame(), simplify = FALSE)
-  } else {
-    # Transform each row's authors
-    authors_vec <- purrr::map_chr(seq_len(nrow(data)), \(i) {
-      # Inspect the authorship field safely
-      auth_data <- data[["authorships"]][[i]]
+  n_rows <- nrow(data)
 
-      if (rlang::is_empty(auth_data)) {
-        msg_warn("No author data for record {i}")
-        return(NA_character_)
-      }
+  # Extract and process authors
+  authors_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
+    if (!"authorships" %in% names(data) || is.null(data[["authorships"]]) || 
+        length(data[["authorships"]]) < i) {
+      return(NA_character_)
+    }
+    auth_data <- data[["authorships"]][[i]]
+    
+    if (is.null(auth_data) || nrow(auth_data) == 0) {
+      return(NA_character_)
+    }
+    
+    # Extract author names
+    auth_names <- auth_data$author$display_name %||% character(0)
+    
+    if (length(auth_names) == 0) {
+      return(NA_character_)
+    }
+    
+    # Parse and format author names
+    parsed_names <- try(
+      parse_authors(auth_names, to_string = TRUE),
+      silent = TRUE
+    )
+    
+    if (inherits(parsed_names, "try-error")) {
+      # Fallback to simple concatenation
+      return(paste(auth_names, collapse = "; "))
+    }
+    
+    parsed_names
+  })
 
-      auth_names <- auth_data$display_name
+  # Extract references and related works
+  refs_list <- purrr::map(seq_len(n_rows), \(i) {
+    if (!"referenced_works" %in% names(data) || is.null(data[["referenced_works"]]) || 
+        length(data[["referenced_works"]]) < i) {
+      return(character(0))
+    }
+    refs <- data[["referenced_works"]][[i]]
+    if (is.null(refs)) return(character(0))
+    remove_url_from_id(refs)
+  })
+  
+  related_list <- purrr::map(seq_len(n_rows), \(i) {
+    if (!"related_works" %in% names(data) || is.null(data[["related_works"]]) || 
+        length(data[["related_works"]]) < i) {
+      return(character(0))
+    }
+    related <- data[["related_works"]][[i]]
+    if (is.null(related)) return(character(0))
+    remove_url_from_id(related)
+  })
 
-      parsed_names <- try(
-        {
-          auth_names |> parse_authors(to_string = TRUE)
-        },
-        silent = TRUE
-      )
-
-      if (inherits(parsed_names, "try-error")) {
-        msg_warn("Failed to parse author names for record {i}")
-        # If we fail to parse, return the raw data
-        return(NA_character_)
-      }
-
-      parsed_names
-    }) |>
-      unlist()
-  }
-
-  # References are in "referenced_works", a character vector of OpenAlex IDs.
-  # Related are in "related_works". We store them as a list-column
-  refs_list <- data[["referenced_works"]] |>
-    purrr::map(remove_url_from_id)
-  if (rlang::is_empty(refs_list)) {
-    refs_list <- rep(list(character()), nrow(data))
-  }
-
-  rel_list <- data[["related_works"]] |>
-    purrr::map(remove_url_from_id)
-  if (rlang::is_empty(rel_list)) {
-    rel_list <- rep(list(character()), nrow(data))
-  }
-
-  # Build .ids for each row:
-  # OpenalexR lumps multiple IDs in a list of named vectors
-  # We want to store them as a data.frame in each row
-  all_ids <- purrr::map(data[["ids"]], \(x) {
-    if (is.null(x) || length(x) == 0) {
+  # Extract IDs
+  ids_list <- purrr::map(seq_len(n_rows), \(i) {
+    if (!"ids" %in% names(data) || is.null(data[["ids"]]) || 
+        length(data[["ids"]]) < i) {
       return(data.frame())
     }
+    ids_data <- data[["ids"]][[i]]
+    if (is.null(ids_data)) {
+      return(data.frame())
+    }
+    
+    # Convert to data frame and clean URLs
+    ids_df <- as.data.frame(ids_data, stringsAsFactors = FALSE)
+    ids_df[] <- purrr::map(ids_df, ~ remove_url_from_id(.x))
+    ids_df
+  })
 
-    as.list(x) |> as.data.frame()
-  }) |>
-    bind_rows() |>
-    # Remove the URL prefixes and keep only the ID
-    mutate(
-      across(everything(), remove_url_from_id)
-    )
+  # Extract journal/venue information
+  journal_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
+    if (!"primary_location" %in% names(data) || is.null(data[["primary_location"]]) || 
+        length(data[["primary_location"]]) < i) {
+      return(NA_character_)
+    }
+    primary_loc <- data[["primary_location"]][[i]]
+    if (is.null(primary_loc) || length(primary_loc) == 0) {
+      return(NA_character_)
+    }
+    
+    # Handle different possible structures
+    if (is.list(primary_loc) && "source" %in% names(primary_loc)) {
+      source_info <- primary_loc[["source"]]
+      if (is.list(source_info) && "display_name" %in% names(source_info)) {
+        return(source_info[["display_name"]] %||% NA_character_)
+      }
+    }
+    
+    return(NA_character_)
+  })
 
-  if (nrow(all_ids) == 0) all_ids <- NULL
+  # Extract URLs
+  url_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
+    if (!"open_access" %in% names(data) || is.null(data[["open_access"]]) || 
+        length(data[["open_access"]]) < i) {
+      return(NA_character_)
+    }
+    oa_data <- data[["open_access"]][[i]]
+    if (is.list(oa_data) && "oa_url" %in% names(oa_data)) {
+      return(oa_data[["oa_url"]] %||% NA_character_)
+    }
+    return(NA_character_)
+  })
 
-  # Produce the final data frame
-  data <- data |>
-    mutate(
-      .paperId = col_get("id") |>
-        remove_url_from_id(),
-      .url = col_get("pdf_url"),
-      .title = col_get("title"),
-      .abstract = col_get("abstract"),
-      .authors = authors_vec,
-      .year = col_get("publication_year"),
-      .journal = col_get("source_display_name"),
-      .pubtype = col_get("type"),
-      .is_open_access = col_get("is_oa"),
-      .references = refs_list,
-      #.citations  = rep(list(NA), nrow(data)),  # empty by default
-      .related = rel_list,
-      .api = "openalex",
-      .ids = all_ids,
-      .before = everything()
-    )
+  # Extract open access status
+  is_oa_vec <- purrr::map_lgl(seq_len(n_rows), \(i) {
+    if (!"open_access" %in% names(data) || is.null(data[["open_access"]]) || 
+        length(data[["open_access"]]) < i) {
+      return(FALSE)
+    }
+    oa_data <- data[["open_access"]][[i]]
+    if (is.list(oa_data) && "is_oa" %in% names(oa_data)) {
+      return(oa_data[["is_oa"]] %||% FALSE)
+    }
+    return(FALSE)
+  })
 
-  data |>
-    dplyr::mutate(
-      .record_name = generate_record_name(data),
-      .before = everything()
-    )
+  # Extract abstracts
+  abstract_vec <- oa_extract_abstract(data[["abstract_inverted_index"]])
+  if (length(abstract_vec) != n_rows) {
+    abstract_vec <- rep(NA_character_, n_rows)
+  }
+
+  # Build standardized data frame
+  result <- data.frame(
+    .record_name = paste0("openalex_", seq_len(n_rows)),
+    .paperId = remove_url_from_id(data[["id"]] %||% rep(NA_character_, n_rows)),
+    .url = url_vec,
+    .title = data[["title"]] %||% rep(NA_character_, n_rows),
+    .abstract = abstract_vec,
+    .authors = authors_vec,
+    .year = data[["publication_year"]] %||% rep(NA_integer_, n_rows),
+    .journal = journal_vec,
+    .pubtype = data[["type"]] %||% rep(NA_character_, n_rows),
+    .is_open_access = is_oa_vec,
+    .references = I(refs_list),
+    .related = I(related_list),
+    .api = "openalex",
+    .ids = I(ids_list),
+    stringsAsFactors = FALSE
+  )
+
+  result
 }
+
+#' Extract abstract from inverted index
+#'
+#' OpenAlex stores abstracts as inverted indexes (word -> position mappings)
+#' for efficiency. This function reconstructs the original abstract text by
+#' sorting words by their positions and concatenating them.
+#'
+#' @param abstract_inverted_index List of inverted index data from OpenAlex API,
+#'   where each element is a named list with words as names and position vectors
+#'   as values
+#'
+#' @return Character vector of reconstructed abstracts, with NA for missing
+#'   or invalid abstract data
+#'   
+#' @details The function handles errors gracefully and falls back to NA when
+#'   the inverted index cannot be processed (e.g., malformed data, missing
+#'   positions).
+#'   
+#' @keywords internal
+oa_extract_abstract <- function(abstract_inverted_index) {
+  if (is.null(abstract_inverted_index)) {
+    return(character(0))
+  }
+  
+  purrr::map_chr(abstract_inverted_index, \(inv_index) {
+    if (is.null(inv_index) || length(inv_index) == 0) {
+      return(NA_character_)
+    }
+    
+    # Convert inverted index back to text
+    try({
+      # Create word-position pairs
+      word_positions <- purrr::imap_dfr(inv_index, ~ data.frame(
+        word = .y,
+        position = as.integer(.x),
+        stringsAsFactors = FALSE
+      ))
+      
+      # Sort by position and reconstruct text
+      if (nrow(word_positions) > 0) {
+        word_positions <- word_positions[order(word_positions$position), ]
+        paste(word_positions$word, collapse = " ")
+      } else {
+        NA_character_
+      }
+    }, silent = TRUE) %||% NA_character_
+  })
+} 

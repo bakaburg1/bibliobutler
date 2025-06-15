@@ -2,7 +2,7 @@
 % Please edit documentation in R/openalex.R
 \name{get_openalex_articles}
 \alias{get_openalex_articles}
-\title{Retrieve Articles from OpenAlex (via openalexR)}
+\title{Retrieve Articles from OpenAlex API (Direct httr2 Implementation)}
 \usage{
 get_openalex_articles(
   ids = NULL,
@@ -15,49 +15,74 @@ get_openalex_articles(
 )
 }
 \arguments{
-\item{ids}{A character vector of identifiers (DOI, PMID, or OpenAlex IDs).
-Example of OpenAlex IDs: \code{"https://openalex.org/W2741809807"}.}
+\item{ids}{A character vector of identifiers (DOI, PMID, PMC ID, or OpenAlex
+IDs). OpenAlex IDs can be provided as full URLs (e.g.,
+\code{"https://openalex.org/W2741809807"}) or as short IDs (e.g.,
+\code{"W2741809807"}). DOIs should be provided without the "doi:" prefix. PMIDs
+should be numeric strings. PMC IDs should include the "PMC" prefix.}
 
-\item{query}{A character string to match in titles/abstracts (similar to a
-free-text search). Only one of \code{ids} or \code{query} can be non-NULL.}
+\item{query}{A character string to search for in titles/abstracts/fulltext.
+Only one of \code{ids} or \code{query} can be non-NULL.}
 
-\item{year_filter}{Publication year or range (e.g., \code{"2019"},
-\code{"2016-2020"}, \code{"2010-"}, \code{"-2015"}). If provided, it
-overrides any year filter in the \code{filters} list. Internally converted
-to OpenAlex date filters.}
+\item{year_filter}{Publication year or range (e.g., \code{"2019"}, \code{"2016-2020"},
+\code{"2010-"}, \code{"-2015"}). If provided, it overrides any year filter in the
+\code{filters} list.}
 
-\item{filters}{A named list of additional filters to pass to
-\code{openalexR}. For example, \code{filters = list(is_oa = TRUE, type =
-  "journal-article")}. See \code{\link[openalexR]{oa_query}} for details.}
+\item{filters}{A named list of additional filters to pass to OpenAlex. For
+example, \code{filters = list(is_oa = TRUE, type = "journal-article")}. See
+OpenAlex API documentation for available filters.}
 
-\item{fields}{A character vector of fields to return. In \code{openalexR},
-you would typically pass these via \code{options = list(select = fields)}.
-If \code{NULL}, all default columns from \code{openalexR} are retrieved.}
+\item{fields}{A character vector of fields to return. If \code{NULL}, default
+fields are used (id, doi, title, abstract_inverted_index, authorships,
+publication_year, publication_date, primary_location, locations, type,
+type_crossref, open_access, cited_by_count, referenced_works,
+related_works, ids).}
 
-\item{per_page}{Approximate number of results fetched per page (default 100).
-Passed to \code{openalexR::oa_fetch(..., per_page = ...)}.}
+\item{per_page}{Number of results per page (default 200, max 200).}
 
-\item{max_results}{Maximum number of total results to return (default
-\code{Inf}). If your query matches more records than \code{max_results},
-the rest are omitted.}
+\item{max_results}{Maximum number of total results to return (default \code{Inf}).
+If your query matches more records than \code{max_results}, the rest are
+omitted.}
 }
 \value{
-A data frame of article data from OpenAlex, with a set of sanitized
-columns at the beginning, identified by a dot prefix.
+A data frame of article data from OpenAlex with standardized
+columns following the package conventions:
+\itemize{
+\item \code{.record_name} - Unique record identifier (e.g., "openalex_1")
+\item \code{.paperId} - OpenAlex work ID (without URL prefix)
+\item \code{.url} - Open access URL if available
+\item \code{.title} - Article title
+\item \code{.abstract} - Article abstract (reconstructed from inverted index)
+\item \code{.authors} - Formatted author names (parsed and standardized)
+\item \code{.year} - Publication year
+\item \code{.journal} - Journal/venue name from primary location
+\item \code{.pubtype} - Publication type (e.g., "journal-article")
+\item \code{.is_open_access} - Logical indicating open access status
+\item \code{.references} - List column of referenced work IDs
+\item \code{.related} - List column of related work IDs
+\item \code{.api} - Source API identifier ("openalex")
+\item \code{.ids} - List column of data frames containing all available IDs
+}
 }
 \description{
-This function provides an interface similar to
-\code{get_semanticscholar_articles()}, but calls the
-\code{openalexR::oa_fetch()} function internally to query the OpenAlex
-database of scholarly works. You can fetch works by ID (DOI, PMID, or
-OpenAlex ID), or by a search query. Additional OpenAlex filters and a year
-range can also be specified.
+This function provides a direct implementation of OpenAlex API access using
+httr2, offering better performance through parallel HTTP requests and more
+control over API interactions. It follows the same interface patterns as
+other API functions in the package.
 }
 \examples{
 \dontrun{
 # Get by specific DOIs
 get_openalex_articles(ids =
   c("10.1371/journal.pone.0266781", "10.1371/journal.pone.0267149"))
+
+# Get by OpenAlex IDs (full URL or short form)
+get_openalex_articles(
+  ids = c("W2741809807", "https://openalex.org/W123456")
+)
+
+# Get by PMIDs
+get_openalex_articles(ids = c("12345678", "87654321"))
 
 # Search for works with "machine learning" in title/abstract
 get_openalex_articles(query = "machine learning")

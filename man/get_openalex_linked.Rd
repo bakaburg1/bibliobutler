@@ -4,32 +4,59 @@
 \alias{get_openalex_linked}
 \title{Get linked articles (references, citations, or related) from OpenAlex}
 \usage{
-get_openalex_linked(ids, links = c("citations", "references", "related"))
+get_openalex_linked(
+  ids,
+  links = c("citations", "references", "related"),
+  max_results = Inf
+)
 }
 \arguments{
-\item{ids}{A character vector of identifiers (DOI, PMID, or OpenAlex IDs).}
+\item{ids}{A character vector of identifiers (DOI, PMID, PMC ID, or OpenAlex
+IDs). OpenAlex IDs can be provided as full URLs or short IDs. See
+\code{get_openalex_articles()} for details on supported ID formats.}
 
 \item{links}{A character vector specifying which types of linked articles to
-retrieve. Any combination of \code{c("citations", "references",
-  "related")}.}
+retrieve. Any combination of \code{c("citations", "references", "related")}.
+Default is all three types.}
+
+\item{max_results}{Maximum number of results to return for citations
+(references and related works are limited by what's available in the source
+articles).}
 }
 \value{
 A named list containing up to three data frames: \code{references},
 \code{citations}, \code{related}. Each data frame has columns:
 \itemize{
-\item \code{source_id} - the queried ID
-\item \code{linked_id} - an OpenAlex ID (or other ID if convertible)
+\item \code{source_id} - The OpenAlex ID of the queried article
+(without URL prefix)
+\item \code{linked_id} - The OpenAlex ID of the linked article
+(without URL prefix)
 }
+
+Note: References and related works are extracted directly from the source
+articles' metadata. Citations are found by querying for works that cite
+the input articles.
 }
 \description{
-Get linked articles (references, citations, or related) from OpenAlex
+This function retrieves linked articles (references, citations, or related
+works) for given article IDs using the OpenAlex API. It uses the new
+httr2-based implementation for better performance and reliability.
 }
 \examples{
 \dontrun{
+# Get all types of linked articles for a single DOI
 get_openalex_linked("10.1371/journal.pone.0266781")
+
+# Get only citations and references for multiple articles
 get_openalex_linked(
   c("10.1371/journal.pone.0266781", "10.1371/journal.pone.0267149"),
   links = c("citations", "references")
+)
+
+# Get only references with OpenAlex IDs
+get_openalex_linked(
+  c("W2741809807", "W123456789"),
+  links = "references"
 )
 }
 }

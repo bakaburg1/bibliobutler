@@ -2,14 +2,27 @@
 % Please edit documentation in R/openalex.R
 \name{oa_parse_year_filter}
 \alias{oa_parse_year_filter}
-\title{Convert a user-supplied year range like "2016-2020" into from/to Publication Date}
+\title{Parse year filter for OpenAlex API}
 \usage{
-oa_parse_year_filter(x)
+oa_parse_year_filter(year_filter)
+}
+\arguments{
+\item{year_filter}{Year filter string in one of several supported formats}
+}
+\value{
+List with \code{from} and \code{to} date strings (YYYY-MM-DD format) or NULL values
 }
 \description{
-If user says "2016-2020", we map to from_publication_date="2016-01-01",
-to_publication_date="2020-12-31".
-If user says "2010-", we map to from_publication_date="2010-01-01",
-to_publication_date= Inf (represented as NULL or "9999-12-31" depending on your preference).
-If user says "-2015", we map from=NULL, to="2015-12-31".
+This function converts various year filter formats into the date range
+format expected by the OpenAlex API (YYYY-MM-DD).
 }
+\details{
+Supported year filter formats:
+\itemize{
+\item Single year: "2020" → from "2020-01-01" to "2020-12-31"
+\item Year range: "2018-2020" → from "2018-01-01" to "2020-12-31"
+\item Open-ended from: "2018-" → from "2018-01-01", no end date
+\item Open-ended to: "-2020" → no start date, to "2020-12-31"
+}
+}
+\keyword{internal}
