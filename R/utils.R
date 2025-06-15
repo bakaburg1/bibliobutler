@@ -17,9 +17,12 @@
 #' check_article_get_input(title = "Example Article Title", fun = "get_article")
 #'
 check_article_get_input <- function(doi = NULL, title = NULL, fun) {
-
   if (!is.null(doi) && !is.null(title)) {
-    stop(fun, ": Use either doi or title as arguments, not both.", call. = FALSE)
+    stop(
+      fun,
+      ": Use either doi or title as arguments, not both.",
+      call. = FALSE
+    )
   }
 
   if (is.null(doi) && is.null(title)) {
@@ -42,11 +45,13 @@ check_article_get_input <- function(doi = NULL, title = NULL, fun) {
 #' check_article_get_fields(c("title", "year"), allowed_fields)
 check_article_get_fields <- function(fields, select_field) {
   if (!all(fields %in% names(select_field))) {
-    stop('"',
-         paste(setdiff(fields, names(select_field)), collapse = ", "),
-         '" is not among the allowed fields: "',
-         paste(names(select_field), collapse = '", "'),
-         '".')
+    stop(
+      '"',
+      paste(setdiff(fields, names(select_field)), collapse = ", "),
+      '" is not among the allowed fields: "',
+      paste(names(select_field), collapse = '", "'),
+      '".'
+    )
   }
 
   select_field <- select_field[fields]
@@ -65,7 +70,6 @@ check_article_get_fields <- function(fields, select_field) {
 #'   exist, returns NA.
 #'
 col_get <- function(...) {
-
   data <- dplyr::pick(everything())
 
   purrr::pluck(data, ...) %||% NA
@@ -113,7 +117,6 @@ get_article_id_type <- function(ids) {
 #' @return A character vector of unique record names.
 #'
 generate_record_name <- function(article_data) {
-
   # Extract the first author
   if (!is.null(unlist(article_data[[".authors"]]))) {
     # Check if authors were parsed already
@@ -123,8 +126,10 @@ generate_record_name <- function(article_data) {
       authors <- article_data$.authors
     }
 
-    first_author <- authors |> purrr::map_chr(
-      ~ .x$last_name[1] %||% NA_character_)
+    first_author <- authors |>
+      purrr::map_chr(
+        ~ .x$last_name[1] %||% NA_character_
+      )
   } else {
     first_author <- rep(NA, nrow(article_data))
   }
@@ -161,7 +166,8 @@ generate_record_name <- function(article_data) {
   # Add a sequential number to the record name if there are duplicates
   dups <- record_names[
     duplicated(record_names) & !is.na(record_names)
-  ] |> unique()
+  ] |>
+    unique()
 
   for (dup in dups) {
     idx <- which(record_names == dup)
@@ -169,7 +175,6 @@ generate_record_name <- function(article_data) {
   }
 
   record_names
-
 }
 
 
@@ -185,27 +190,180 @@ generate_record_name <- function(article_data) {
 #'
 remove_stopwords <- function(x) {
   words <- c(
-    "i", "me", "my", "myself", "we", "our", "ours", "ourselves",
-    "you", "your", "yours", "yourself", "yourselves", "he", "him", "his",
-    "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they",
-    "them", "their", "theirs", "themselves", "what", "which", "who", "whom",
-    "this", "that", "these", "those", "am", "is", "are", "was", "were", "be",
-    "been", "being", "have", "has", "had", "having", "do", "does", "did",
-    "doing", "would", "should", "could", "ought", "i'm", "you're", "he's",
-    "she's", "it's", "we're", "they're", "i've", "you've", "we've", "they've",
-    "i'd", "you'd", "he'd", "she'd", "we'd", "they'd", "i'll", "you'll",
-    "he'll", "she'll", "we'll", "they'll", "isn't", "aren't", "wasn't",
-    "weren't", "hasn't", "haven't", "hadn't", "doesn't", "don't", "didn't",
-    "won't", "wouldn't", "shan't", "shouldn't", "can't", "cannot", "couldn't",
-    "mustn't", "let's", "that's", "who's", "what's", "here's", "there's",
-    "when's", "where's", "why's", "how's", "a", "an", "the", "and", "but", "if",
-    "or", "because", "as", "until", "while", "of", "at", "by", "for", "with",
-    "about", "against", "between", "into", "through", "during", "before",
-    "after", "above", "below", "to", "from", "up", "down", "in", "out", "on",
-    "off", "over", "under", "again", "further", "then", "once", "here", "there",
-    "when", "where", "why", "how", "all", "any", "both", "each", "few", "more",
-    "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same",
-    "so", "than", "too", "very"
+    "i",
+    "me",
+    "my",
+    "myself",
+    "we",
+    "our",
+    "ours",
+    "ourselves",
+    "you",
+    "your",
+    "yours",
+    "yourself",
+    "yourselves",
+    "he",
+    "him",
+    "his",
+    "himself",
+    "she",
+    "her",
+    "hers",
+    "herself",
+    "it",
+    "its",
+    "itself",
+    "they",
+    "them",
+    "their",
+    "theirs",
+    "themselves",
+    "what",
+    "which",
+    "who",
+    "whom",
+    "this",
+    "that",
+    "these",
+    "those",
+    "am",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "having",
+    "do",
+    "does",
+    "did",
+    "doing",
+    "would",
+    "should",
+    "could",
+    "ought",
+    "i'm",
+    "you're",
+    "he's",
+    "she's",
+    "it's",
+    "we're",
+    "they're",
+    "i've",
+    "you've",
+    "we've",
+    "they've",
+    "i'd",
+    "you'd",
+    "he'd",
+    "she'd",
+    "we'd",
+    "they'd",
+    "i'll",
+    "you'll",
+    "he'll",
+    "she'll",
+    "we'll",
+    "they'll",
+    "isn't",
+    "aren't",
+    "wasn't",
+    "weren't",
+    "hasn't",
+    "haven't",
+    "hadn't",
+    "doesn't",
+    "don't",
+    "didn't",
+    "won't",
+    "wouldn't",
+    "shan't",
+    "shouldn't",
+    "can't",
+    "cannot",
+    "couldn't",
+    "mustn't",
+    "let's",
+    "that's",
+    "who's",
+    "what's",
+    "here's",
+    "there's",
+    "when's",
+    "where's",
+    "why's",
+    "how's",
+    "a",
+    "an",
+    "the",
+    "and",
+    "but",
+    "if",
+    "or",
+    "because",
+    "as",
+    "until",
+    "while",
+    "of",
+    "at",
+    "by",
+    "for",
+    "with",
+    "about",
+    "against",
+    "between",
+    "into",
+    "through",
+    "during",
+    "before",
+    "after",
+    "above",
+    "below",
+    "to",
+    "from",
+    "up",
+    "down",
+    "in",
+    "out",
+    "on",
+    "off",
+    "over",
+    "under",
+    "again",
+    "further",
+    "then",
+    "once",
+    "here",
+    "there",
+    "when",
+    "where",
+    "why",
+    "how",
+    "all",
+    "any",
+    "both",
+    "each",
+    "few",
+    "more",
+    "most",
+    "other",
+    "some",
+    "such",
+    "no",
+    "nor",
+    "not",
+    "only",
+    "own",
+    "same",
+    "so",
+    "than",
+    "too",
+    "very"
   )
 
   # Create regex pattern of sorted stopwords separated by |
@@ -228,10 +386,9 @@ remove_stopwords <- function(x) {
 #' @return A data frame with parsed author names.
 #'
 parse_authors <- function(
-    authors,
-    to_string = FALSE
+  authors,
+  to_string = FALSE
 ) {
-
   authors <- authors |>
     stringr::str_split("\\s*,\\s*") |>
     unlist() |>
@@ -283,7 +440,9 @@ parse_authors <- function(
 #'
 remove_url_from_id <- function(ids) {
   urls <- c(
-    "doi\\.org", "openalex\\.org", "pubmed\\.ncbi\\.nlm\\.nih\\.gov",
+    "doi\\.org",
+    "openalex\\.org",
+    "pubmed\\.ncbi\\.nlm\\.nih\\.gov",
     "ncbi\\.nlm\\.nih\\.gov/pmc/articles"
   ) |>
     paste(collapse = "|")
@@ -294,32 +453,169 @@ remove_url_from_id <- function(ids) {
   )
 }
 
-#' Set the number of parallel workers for `bibliobutler` operations
+#' safe_mirai_map
 #'
-#' This function sets the number of parallel workers that `bibliobutler` will
-#' use for parallel processing operations. The setting is stored in the
-#' 'bibliobutler.workers' option.
+#' A drop-in replacement for mirai::mirai_map() that degrades to sequential
+#' evaluation with purrr::map() when no daemons have been set.
 #'
-#' @param n_cores Integer specifying the number of cores to use.
+#' @param .x A list, vector, data frame or matrix to iterate over
+#' @param .f A function to apply to each element / row
+#' @param ... Named objects referenced (but not defined) inside .f
+#' @param .args Further constant arguments to .f, passed as a list
+#' @param .promise As in mirai::mirai_map(); ignored in fallback
 #'
-#' @return No return value, called for side effects.
+#' @return A list of **mirai** objects when daemons are available; otherwise a
+#'   plain list of results (same length as .x)
 #'
-#' @export
-#'
-set_parallel_process <- function(n_cores) {
-  options(bibliobutler.workers = n_cores)
+#' @examples safe_mirai_map(1:3, ~.x * 2) # sequential if no daemons()
+#'   mirai::daemons(2); # start two workers safe_mirai_map(1:3, ~.x * 2)[] #
+#'   parallel, then collect
+safe_mirai_map <- function(.x,
+                           .f,
+                           ...,
+                           .args    = list(),
+                           .promise = NULL) {
+  # Logging setup
+  log_file <- file.path("logs", paste0("mirai_log_", Sys.time(), ".txt"))
+  log_message <- function(...) {
+    write(
+      sprintf("[%s] %s", Sys.time(), paste0(...)),
+      file = log_file,
+      append = TRUE
+    )
+  }
+
+  log_message("safe_mirai_map called.")
+
+  # Check if any daemons are available (named or default)
+  current_daemons <- mirai::daemons()
+  daemons_available <- current_daemons$connections > 0
+
+  if (daemons_available) { # parallel branch
+    log_message("Executing in parallel with ", current_daemons$connections, " workers.")
+    
+    # Capture the unevaluated expression for logging
+    f_expr <- rlang::enexpr(.f)
+    log_message("Function to apply: ", rlang::expr_text(f_expr))
+
+    # Add logging wrapper to the function
+    .f_logged <- function(...) {
+      # This part executes on the worker
+      worker_log_file <- file.path("logs", paste0("worker_", Sys.getpid(), "_", Sys.time(), ".txt"))
+      worker_log <- function(...) {
+        write(
+          sprintf("[%s] %s", Sys.time(), paste0(...)),
+          file = worker_log_file,
+          append = TRUE
+        )
+      }
+
+      worker_log("Worker started for an item.")
+      
+      # Try to execute the original function
+      tryCatch({
+        result <- .f(...)
+        worker_log("Function executed successfully.")
+        return(result)
+      }, error = function(e) {
+        worker_log("!!! ERROR in worker: ", conditionMessage(e))
+        worker_log("Backtrace: ", paste(capture.output(rlang::trace_back()), collapse = "\n"))
+        # Re-throw the error so mirai can see it
+        stop(e)
+      })
+    }
+
+    mirai::mirai_map(.x, .f_logged,
+      ...,
+      .args = .args,
+      .promise = .promise
+    )
+  } else { # sequential branch
+    log_message("Executing sequentially.")
+    # When no daemons are present, just use purrr::map sequentially.
+    # The ... arguments are automatically available to .f through lexical
+    # scoping.
+    purrr::map(.x, .f)
+  }
 }
 
-#' Get the current number of parallel workers
+#' Enable parallel processing for bibliobutler operations
 #'
-#' This function retrieves the number of parallel workers currently configured
-#' for `bibliobutler` operations. If not explicitly set, defaults to all
-#' available cores.
+#' This convenience function enables parallel processing for bibliobutler
+#' functions by setting up background workers.
 #'
-#' @return Integer specifying the number of parallel workers configured.
+#' @param workers Number of parallel workers to use.
+#'   Defaults to `parallel::detectCores() - 1`.
+#'
+#' @return Invisibly returns the number of workers created.
+#'
+#' @details
+#' This function sets up parallel workers that bibliobutler functions will
+#' automatically use to speed up operations. If workers are already running,
+#' this will stop them and create new ones.
+#'
+#' To disable parallel processing, use `disable_parallel()`.
+#'
+#' @examples
+#' \dontrun{
+#' # Enable parallel processing with default number of workers
+#' enable_parallel()
+#'
+#' # Use specific number of workers
+#' enable_parallel(workers = 4)
+#'
+#' # Disable parallel processing
+#' disable_parallel()
+#' }
 #'
 #' @export
+enable_parallel <- function(workers = parallel::detectCores() - 1) {
+  
+  if (workers < 1) {
+    stop("workers must be at least 1")
+  }
+  
+  # Check for existing daemons
+  current_daemons <- mirai::daemons()
+  if (current_daemons$daemons > 0) {
+    # Stop existing daemons if any
+    mirai::daemons(0)
+    msg_info("Stopped existing {current_daemons$daemons} workers")
+  }
+  
+  # Start new daemons
+  mirai::daemons(workers)
+  
+  msg_success("Enabled parallel processing with {workers} workers")
+  
+  invisible(workers)
+}
+
+#' Disable parallel processing for bibliobutler operations
 #'
-get_parallel_process <- function() {
-  getOption("bibliobutler.workers", parallel::detectCores())
+#' This function stops all background workers and disables parallel processing.
+#' After calling this function, bibliobutler operations will run sequentially.
+#'
+#' @return Invisibly returns `TRUE` if workers were stopped, `FALSE` if none were running.
+#'
+#' @examples
+#' \dontrun{
+#' # Enable then disable parallel processing
+#' enable_parallel()
+#' # ... do some work ...
+#' disable_parallel()
+#' }
+#'
+#' @export
+disable_parallel <- function() {
+  
+  current_daemons <- mirai::daemons()
+  if (current_daemons$daemons > 0) {
+    mirai::daemons(0)
+    msg_success("Disabled parallel processing ({current_daemons$daemons} workers stopped)")
+    invisible(TRUE)
+  } else {
+    msg_info("No parallel workers were running")
+    invisible(FALSE)
+  }
 }
