@@ -1,8 +1,6 @@
 # test-semanticscholar.R
 
-test_that(
-  "get_semanticscholar_articles() returns expected structure for a query", {
-
+test_that("get_semanticscholar_articles() returns expected structure for a query", {
   skip_on_cran()
 
   # Call the function with sample parameters
@@ -24,14 +22,26 @@ test_that(
     dplyr::select(dplyr::starts_with("."))
 
   # Check it has at least the columns we expect
-  expect_setequal(names(processed_results), c(
-    ".record_name", ".paperId", ".title", ".abstract", ".year",
-    ".authors", ".journal", ".pubtype", ".api", ".is_open_access",
-    ".url", ".ids"
-  ))
+  expect_setequal(
+    names(processed_results),
+    c(
+      ".record_name",
+      ".paperId",
+      ".title",
+      ".abstract",
+      ".year",
+      ".authors",
+      ".journal",
+      ".pubtype",
+      ".api",
+      ".is_open_access",
+      ".url",
+      ".ids"
+    )
+  )
 
   # Check if the publication year is 2025
-  expect_true(all(processed_results$.year == 2025))
+  expect_equal(processed_results$.year, rep(2025, nrow(processed_results)))
 
   # Check .ids is a data frame column
   expect_s3_class(processed_results$.ids, "data.frame")
@@ -51,24 +61,38 @@ test_that("get_semanticscholar_articles() can fetch articles by ID", {
 
   results <- get_semanticscholar_articles(
     ids = sample_ids,
-    fields = c("citations", "references", "authors")  # Added authors field
+    fields = c("citations", "references", "authors") # Added authors field
   )
 
   expect_s3_class(results, "data.frame")
   # Might be fewer if some fail to fetch
   expect_equal(nrow(results), length(sample_ids))
-  expect_true(all(results$.paperId != ""))          # Expect some non-empty IDs
+  expect_true(grepl("^[0-9a-f]{40}$", results$.paperId[1]))
 
   # Get only processed fields for testing
   processed_results <- results |>
     dplyr::select(dplyr::starts_with("."))
 
   # Check we have at least the same columns as before:
-  expect_setequal(names(processed_results), c(
-    ".record_name", ".paperId", ".title", ".abstract", ".year",
-    ".authors", ".journal", ".pubtype", ".api", ".is_open_access",
-    ".url", ".references", ".citations", ".ids"
-  ))
+  expect_setequal(
+    names(processed_results),
+    c(
+      ".record_name",
+      ".paperId",
+      ".title",
+      ".abstract",
+      ".year",
+      ".authors",
+      ".journal",
+      ".pubtype",
+      ".api",
+      ".is_open_access",
+      ".url",
+      ".references",
+      ".citations",
+      ".ids"
+    )
+  )
 
   # Check if doi and semantic scholar id are present in .ids
   expect_contains(names(processed_results$.ids), c("doi", "semanticscholar"))
@@ -103,11 +127,9 @@ test_that("get_semanticscholar_linked() returns expected structure", {
   if (nrow(linked$related) > 0) {
     expect_setequal(names(linked$related), c("source_id", "linked_id"))
   }
-
 })
 
-test_that(
-  "get_semanticscholar_linked() handles invalid or empty ID gracefully", {
+test_that("get_semanticscholar_linked() handles invalid or empty ID gracefully", {
   # skip_on_cran()
 
   # Provide an invalid ID
@@ -140,8 +162,8 @@ test_that("get_semanticscholar_linked() works with IDs of different formats", {
   skip_on_cran()
 
   ids <- c(
-    "0002dafbba9b1dfd434dcb00d6f7c8468ccdd89e",  # Semantic Scholar ID
-    "10.62486/agsalud2025197"                    # DOI
+    "0002dafbba9b1dfd434dcb00d6f7c8468ccdd89e", # Semantic Scholar ID
+    "10.62486/agsalud2025197" # DOI
   )
 
   linked <- get_semanticscholar_linked(ids = ids)
@@ -158,10 +180,10 @@ test_that("get_semanticscholar_linked() works with IDs of different formats", {
 test_that("Two different versions of the same ID return the same article", {
   skip_on_cran()
 
-  s2_id   <- "0002dafbba9b1dfd434dcb00d6f7c8468ccdd89e"
-  doi_id  <- "10.62486/agsalud2025197"
+  s2_id <- "0002dafbba9b1dfd434dcb00d6f7c8468ccdd89e"
+  doi_id <- "10.62486/agsalud2025197"
 
-  result_s2  <- get_semanticscholar_articles(ids = s2_id)
+  result_s2 <- get_semanticscholar_articles(ids = s2_id)
   result_doi <- get_semanticscholar_articles(ids = doi_id)
 
   # Basic checks: both should return exactly 1 row
@@ -172,5 +194,4 @@ test_that("Two different versions of the same ID return the same article", {
   expect_equal(result_s2$.paperId, result_doi$.paperId)
   expect_equal(result_s2$.title, result_doi$.title)
   expect_equal(result_s2$.year, result_doi$.year)
-
 })

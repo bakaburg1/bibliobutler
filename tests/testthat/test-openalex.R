@@ -1,8 +1,6 @@
 # test-openalex.R
 
-test_that(
-  "get_openalex_articles() returns expected structure for a query", {
-
+test_that("get_openalex_articles() returns expected structure for a query", {
   skip_on_cran()
 
   # Call the function with sample parameters
@@ -24,14 +22,28 @@ test_that(
     dplyr::select(dplyr::starts_with("."))
 
   # Check it has at least the columns we expect
-  expect_setequal(names(processed_results), c(
-    ".record_name", ".paperId", ".title", ".abstract", ".year",
-    ".authors", ".journal", ".pubtype", ".api", ".is_open_access",
-    ".url", ".references", ".related", ".ids"
-  ))
+  expect_setequal(
+    names(processed_results),
+    c(
+      ".record_name",
+      ".paperId",
+      ".title",
+      ".abstract",
+      ".year",
+      ".authors",
+      ".journal",
+      ".pubtype",
+      ".api",
+      ".is_open_access",
+      ".url",
+      ".references",
+      ".related",
+      ".ids"
+    )
+  )
 
   # Check if the publication year is 2025
-  expect_true(all(processed_results$.year == 2025))
+  expect_equal(processed_results$.year, rep(2025, nrow(processed_results)))
 
   # Check .ids is a data frame column
   expect_s3_class(processed_results$.ids, "data.frame")
@@ -44,12 +56,12 @@ test_that("get_openalex_articles() can fetch articles by ID", {
   skip_on_cran()
 
   # Test OpenAlex ID
-  openalex_id <- "W2741809807"  # OpenAlex ID without URL prefix
+  openalex_id <- "W2741809807" # OpenAlex ID without URL prefix
   result_oa <- get_openalex_articles(ids = openalex_id)
 
   expect_s3_class(result_oa, "data.frame")
   expect_equal(nrow(result_oa), 1)
-  expect_true(all(result_oa$.paperId != ""))
+  expect_match(result_oa$.paperId[1], "^W\\d+$")
 
   # Test DOI
   doi_id <- "10.1371/journal.pone.0266781"
@@ -57,18 +69,32 @@ test_that("get_openalex_articles() can fetch articles by ID", {
 
   expect_s3_class(result_doi, "data.frame")
   expect_equal(nrow(result_doi), 1)
-  expect_true(all(result_doi$.paperId != ""))
+  expect_match(result_doi$.paperId[1], "^W\\d+$")
 
   # Check columns in both results
   for (results in list(result_oa, result_doi)) {
     processed_results <- results |>
       dplyr::select(dplyr::starts_with("."))
 
-    expect_setequal(names(processed_results), c(
-      ".record_name", ".paperId", ".title", ".abstract", ".year",
-      ".authors", ".journal", ".pubtype", ".api", ".is_open_access",
-      ".url", ".references", ".related", ".ids"
-    ))
+    expect_setequal(
+      names(processed_results),
+      c(
+        ".record_name",
+        ".paperId",
+        ".title",
+        ".abstract",
+        ".year",
+        ".authors",
+        ".journal",
+        ".pubtype",
+        ".api",
+        ".is_open_access",
+        ".url",
+        ".references",
+        ".related",
+        ".ids"
+      )
+    )
 
     expect_contains(names(processed_results$.ids), c("doi", "openalex"))
   }
@@ -76,7 +102,7 @@ test_that("get_openalex_articles() can fetch articles by ID", {
 
 test_that("get_openalex_linked() returns expected structure", {
   skip_on_cran()
-  
+
   # Skip if bibliobutler package isn't installed (required for mirai_map)
   if (!requireNamespace("bibliobutler", quietly = TRUE)) {
     skip("bibliobutler package must be installed for tests using mirai_map")
@@ -110,9 +136,7 @@ test_that("get_openalex_linked() returns expected structure", {
   }
 })
 
-test_that(
-  "get_openalex_linked() handles invalid or empty ID gracefully", {
-
+test_that("get_openalex_linked() handles invalid or empty ID gracefully", {
   # Provide an invalid ID
   bad_id <- "notadoi"
 
@@ -131,7 +155,7 @@ test_that(
 
 test_that("get_openalex_linked() handles single ID type", {
   skip_on_cran()
-  
+
   # Skip if bibliobutler package isn't installed (required for mirai_map)
   if (!requireNamespace("bibliobutler", quietly = TRUE)) {
     skip("bibliobutler package must be installed for tests using mirai_map")
@@ -153,10 +177,10 @@ test_that("get_openalex_linked() handles single ID type", {
 test_that("Two different versions of the same ID return the same article", {
   skip_on_cran()
 
-  openalex_id <- "W4224016882"  # Without URL prefix
-  doi_id      <- "10.1371/journal.pone.0266781"
+  openalex_id <- "W4224016882" # Without URL prefix
+  doi_id <- "10.1371/journal.pone.0266781"
 
-  result_oa  <- get_openalex_articles(ids = openalex_id)
+  result_oa <- get_openalex_articles(ids = openalex_id)
   result_doi <- get_openalex_articles(ids = doi_id)
 
   # Basic checks: both should return exactly 1 row
