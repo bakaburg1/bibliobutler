@@ -63,11 +63,10 @@ collect_references <- function(source, query, limit = 100) {
 #'
 #' @export
 convert_article_id <- function(
-    ids,
-    to = c("doi", "pmid", "pmcid", "openalex", "semanticscholar"),
-    keep_failed_conversions = FALSE
+  ids,
+  to = c("doi", "pmid", "pmcid", "openalex", "semanticscholar"),
+  keep_failed_conversions = FALSE
 ) {
-
   to <- match.arg(to)
 
   # If all inputs are NA, return immediately
@@ -102,9 +101,10 @@ convert_article_id <- function(
     ) |>
     group_split(.data[["type"]], .data[["batch"]])
 
-  # Process all IDs in a single future_map call
-  results <- furrr::future_map(
-    all_ids_df, \(group) {
+  # Process all IDs sequentially for now to avoid complex dependency issues
+  results <- purrr::map(
+    all_ids_df,
+    \(group) {
       id_type <- unique(group$type)
       batch_ids <- group$id
 
@@ -115,29 +115,25 @@ convert_article_id <- function(
 
       # Get the ids using the appropriate API
       if (id_type == "semanticscholar" || to == "semanticscholar") {
-
         api_result <- get_semanticscholar_articles(
-          ids = batch_ids, fields = "externalIds")
-
-      } else { # Default to OpenAlex API for all apart semanticscholar IDs
-
-        # Construct the OpenAlex API filter parameter
-        filter_param <- paste0(id_type, ":", paste(
-          if (id_type == "pmcid") {
-            stringr::str_remove(batch_ids, "^PMC")
-          } else batch_ids,
-          collapse = "|"
-        ))
-
+          ids = batch_ids,
+          fields = "externalIds"
+        )
+      } else {
+        # Default to OpenAlex API for all apart semanticscholar IDs
         api_result <- get_openalex_articles(
-          ids = batch_ids, fields = "ids"
+          ids = batch_ids,
+          fields = "ids"
         )
       }
 
-      conversion_df <- left_join(
+      id_col_name <- if (id_type == "doi") "doi" else id_type
+      
+      conversion_df <- dplyr::left_join(
         data.frame(source_id = batch_ids),
-        api_result$.ids |> select(any_of(c(to, id_type))),
-        by = c("source_id" = id_type))
+        dplyr::select(api_result$.ids, dplyr::any_of(c(to, id_col_name))),
+        by = setNames(id_col_name, "source_id")
+      )
 
       converted_ids <- conversion_df[[to]]
 
@@ -147,7 +143,9 @@ convert_article_id <- function(
       original_ids <- conversion_df$source_id
 
       data.frame(original_id = original_ids, converted_id = converted_ids)
-    }) |> bind_rows()
+    }
+  ) |>
+    bind_rows()
 
   # Create the final result as a named vector, preserving original NAs and order
   result <- ids
@@ -160,7 +158,7 @@ convert_article_id <- function(
 
   # Update result vector with converted ids
   result[!is.na(ids)] <- results$converted_id[id_matches]
-  names(result) <- ids  # Ensure names match input exactly
+  names(result) <- ids # Ensure names match input exactly
 
   # Replace non-NA values with original ids if keep_failed_conversions is TRUE
   if (keep_failed_conversions) {
