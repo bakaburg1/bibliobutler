@@ -62,14 +62,14 @@
 #'
 #' @export
 get_semanticscholar_articles <- function(
-    ids = NULL,
-    query = NULL,
-    year_filter = NULL,
-    filters = NULL,
-    fields = NULL,
-    per_page = 100,
-    max_results = Inf) {
-
+  ids = NULL,
+  query = NULL,
+  year_filter = NULL,
+  filters = NULL,
+  fields = NULL,
+  per_page = 100,
+  max_results = Inf
+) {
   # Input validation: ensure only one of ids or query is provided
 
   if (!is.null(ids) && !is.null(query)) {
@@ -83,8 +83,14 @@ get_semanticscholar_articles <- function(
   id_fields <- c("paperId", "externalIds")
 
   default_fields <- c(
-    "title", "abstract", "authors", "year", "isOpenAccess",
-    "venue", "openAccessPdf", "publicationTypes"
+    "title",
+    "abstract",
+    "authors",
+    "year",
+    "isOpenAccess",
+    "venue",
+    "openAccessPdf",
+    "publicationTypes"
   )
 
   fields <- c(id_fields, fields %||% default_fields) |>
@@ -108,12 +114,35 @@ get_semanticscholar_articles <- function(
     # Process IDs in batches of 500
     id_batches <- split(valid_ids, ceiling(seq_along(valid_ids) / 500))
 
-    all_results <- furrr::future_map(
-      id_batches,
-      \(batch) s2_process_batch(batch, query_data),
-      .progress = TRUE
-    ) |>
-      dplyr::bind_rows()
+    # Create request objects for parallel HTTP execution
+    reqs <- purrr::map(id_batches, function(batch) {
+      s2_make_api_call(
+        "https://api.semanticscholar.org/graph/v1/paper/batch",
+        "POST",
+        body = list(ids = as.list(unname(batch))),
+        query = query_data,
+        as_req = TRUE
+      )
+    })
+
+    msg_status("Fetching {length(reqs)} Semantic Scholar batches in parallel...")
+    # Perform requests in parallel
+    resps <- httr2::req_perform_parallel(reqs, on_error = "continue")
+
+    # Process the responses
+    all_results <- purrr::map(resps, function(resp) {
+      if (inherits(resp, "httr2_response")) {
+        # Parse the JSON response
+        json_resp <- httr2::resp_body_json(resp, simplifyVector = TRUE)
+        s2_process_response(json_resp)
+      } else {
+        # This was an error object
+        msg_warn("Failed to fetch a batch: {conditionMessage(resp)}")
+        return(data.frame())
+      }
+    })
+
+    all_results <- dplyr::bind_rows(all_results)
   } else {
     # Use paper/search/bulk for query
     endpoint <- "https://api.semanticscholar.org/graph/v1/paper/search/bulk"
@@ -165,7 +194,9 @@ get_semanticscholar_articles <- function(
 
       # Make API call to get batch of results
       batch_results <- s2_make_api_call(
-        endpoint, "GET", query = query_data
+        endpoint,
+        "GET",
+        query = query_data
       )
 
       # Append batch results to accumulated results
@@ -209,13 +240,13 @@ get_semanticscholar_articles <- function(
       s2_process_response()
 
     msg_success("Fetched {nrow(all_results)} results from Semantic Scholar")
-
   }
 
   if (nrow(all_results) == 0) {
     warning(
       "No results found for the given query.",
-      call. = FALSE, immediate. = TRUE
+      call. = FALSE,
+      immediate. = TRUE
     )
   }
 
@@ -259,8 +290,8 @@ get_semanticscholar_articles <- function(
 #' }
 #'
 get_semanticscholar_linked <- function(
-    ids,
-    links = c("citations", "references", "related")
+  ids,
+  links = c("citations", "references", "related")
 ) {
   # Validate and select the link types from allowed values
   links <- match.arg(links, several.ok = TRUE)
@@ -303,12 +334,15 @@ get_semanticscholar_linked <- function(
     )[links] |>
       purrr::discard(is.na)
 
-    msg_status("Fetching {paste(names(fields), collapse = \" and \")} ",
-      "for {length(ids)} IDs")
+    msg_status(
+      "Fetching {paste(names(fields), collapse = \" and \")} ",
+      "for {length(ids)} IDs"
+    )
 
     # Fetch article data including citations/references
     article_data <- get_semanticscholar_articles(
-      ids = ids, fields = fields
+      ids = ids,
+      fields = fields
     )
 
     # Return early if no articles found
@@ -380,7 +414,7 @@ get_semanticscholar_linked <- function(
         nrow() |>
         seq_len() |>
         purrr::map(\(x) {
-          paper <- content$recommendedPapers[x,]
+          paper <- content$recommendedPapers[x, ]
 
           # Create data frame linking source to recommended paper
           data.frame(
@@ -476,7 +510,6 @@ s2_prepare_ids <- function(ids) {
 #' @return A character vector of Semantic Scholar IDs.
 
 s2_buld_id <- function(paper_data) {
-
   if (length(paper_data) == 0) {
     return(NA)
   }
@@ -494,8 +527,8 @@ s2_buld_id <- function(paper_data) {
     },
     paper_data$externalIds$PubMed,
     paper_data$paperId
-  ) |> tolower()
-
+  ) |>
+    tolower()
 }
 
 
@@ -516,50 +549,57 @@ s2_buld_id <- function(paper_data) {
 s2_process_response <- function(data) {
   if ("data" %in% names(data)) data <- data$data
 
-  data <- data |> dplyr::mutate(
-    .paperId = col_get("paperId"),
-    .title = col_get("title"),
-    .abstract = col_get("abstract"),
-    across(any_of("authors"), ~ .x |> purrr::map_chr(\(.y) {
-      if (rlang::is_empty(.y)) return(NA_character_)
-      .y[["name"]] |> parse_authors(to_string = TRUE)
-    }), .names = ".authors"),
-    .year = col_get("year"),
-    .journal = col_get("venue"),
-    .is_open_access = col_get("isOpenAccess"),
-    .url = coalesce(
-      col_get("openAccessPdf", "url"),
-      paste0("https://www.semanticscholar.org/paper/", col_get("paperId"))
-    ),
-    .pubtype = if (!is.null(data[["publicationTypes"]])) {
-      purrr::map_chr(data[["publicationTypes"]], ~ paste(.x, collapse = ", "))
-    } else {
-      NA_character_
-    },
-    across(
-      any_of(c("references", "citations")),
-      ~ purrr::map(.x, s2_buld_id),
-      .names = ".{col}"
-    ),
-    .api = "semanticscholar",
-    .ids = data.frame(
-      semanticscholar = col_get("paperId"),
-      data$externalIds |>
-        select(
-          doi = any_of("DOI"),
-          pmid = any_of("PubMed"),
-          pmcid = any_of("PubMedCentral"),
-          arxiv = any_of("ArXiv")
-        ) |>
-        purrr::discard(~ all(is.na(.x)))
-    ),
-    .before = everything()
-  )
+  data <- data |>
+    dplyr::mutate(
+      .paperId = col_get("paperId"),
+      .title = col_get("title"),
+      .abstract = col_get("abstract"),
+      across(
+        any_of("authors"),
+        ~ .x |>
+          purrr::map_chr(\(.y) {
+            if (rlang::is_empty(.y)) return(NA_character_)
+            .y[["name"]] |> parse_authors(to_string = TRUE)
+          }),
+        .names = ".authors"
+      ),
+      .year = col_get("year"),
+      .journal = col_get("venue"),
+      .is_open_access = col_get("isOpenAccess"),
+      .url = coalesce(
+        col_get("openAccessPdf", "url"),
+        paste0("https://www.semanticscholar.org/paper/", col_get("paperId"))
+      ),
+      .pubtype = if (!is.null(data[["publicationTypes"]])) {
+        purrr::map_chr(data[["publicationTypes"]], ~ paste(.x, collapse = ", "))
+      } else {
+        NA_character_
+      },
+      across(
+        any_of(c("references", "citations")),
+        ~ purrr::map(.x, s2_buld_id),
+        .names = ".{col}"
+      ),
+      .api = "semanticscholar",
+      .ids = data.frame(
+        semanticscholar = col_get("paperId"),
+        data$externalIds |>
+          select(
+            doi = any_of("DOI"),
+            pmid = any_of("PubMed"),
+            pmcid = any_of("PubMedCentral"),
+            arxiv = any_of("ArXiv")
+          ) |>
+          purrr::discard(~ all(is.na(.x)))
+      ),
+      .before = everything()
+    )
 
-  data |> dplyr::mutate(
-    .record_name = generate_record_name(data),
-    .before = everything()
-  )
+  data |>
+    dplyr::mutate(
+      .record_name = generate_record_name(data),
+      .before = everything()
+    )
 }
 
 #' Process a batch of article IDs through the Semantic Scholar API
@@ -581,7 +621,9 @@ s2_process_batch <- function(batch_ids, query_data = NULL) {
   body <- list(ids = as.list(unname(batch_ids)))
 
   results <- s2_make_api_call(
-    endpoint, "POST", body = body,
+    endpoint,
+    "POST",
+    body = body,
     query = query_data
   )
 
@@ -598,15 +640,17 @@ s2_process_batch <- function(batch_ids, query_data = NULL) {
 #' @param body Optional list of body parameters to include in the API request
 #' @param query Optional list of query parameters to include in the API request
 #' @param headers Optional additional HTTP headers to include in the API request
+#' @param as_req Logical indicating whether to return the request object instead of the response
 #'
 #' @return The parsed JSON response from the API
 #'
 #' @keywords internal
 s2_make_api_call <- function(
-    endpoint,
-    method,
-    body = NULL,
-    query = NULL
+  endpoint,
+  method,
+  body = NULL,
+  query = NULL,
+  as_req = FALSE
 ) {
   # Create base request with endpoint
   req <- httr2::request(endpoint) |>
@@ -619,7 +663,7 @@ s2_make_api_call <- function(
     # Add retry functionality with exponential backoff
     httr2::req_retry(
       max_tries = 5,
-      backoff = \(i) max(rpois(1, 2 * 2 ^ i), 1),
+      backoff = \(i) max(rpois(1, 2 * 2^i), 1),
       is_transient = \(resp) {
         httr2::resp_status(resp) %in% c(429, 500, 503)
       }
@@ -637,6 +681,10 @@ s2_make_api_call <- function(
 
   if (getOption("bibliobutler.dev_mode")) {
     msg_status("Requesting url: {req$url}")
+  }
+
+  if (as_req) {
+    return(req)
   }
 
   # Perform request and parse JSON response
