@@ -4,7 +4,7 @@
 \alias{s2_make_api_call}
 \title{Make a single API call to the Semantic Scholar API}
 \usage{
-s2_make_api_call(endpoint, method, body = NULL, query = NULL)
+s2_make_api_call(endpoint, method, body = NULL, query = NULL, as_req = FALSE)
 }
 \arguments{
 \item{endpoint}{The API endpoint URL}
@@ -14,6 +14,8 @@ s2_make_api_call(endpoint, method, body = NULL, query = NULL)
 \item{body}{Optional list of body parameters to include in the API request}
 
 \item{query}{Optional list of query parameters to include in the API request}
+
+\item{as_req}{Logical indicating whether to return the request object instead of the response}
 
 \item{headers}{Optional additional HTTP headers to include in the API request}
 }

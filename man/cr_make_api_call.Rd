@@ -4,7 +4,13 @@
 \alias{cr_make_api_call}
 \title{Make an API Call to Crossref}
 \usage{
-cr_make_api_call(endpoint, method = "GET", query = NULL, headers = NULL)
+cr_make_api_call(
+  endpoint,
+  method = "GET",
+  query = NULL,
+  headers = NULL,
+  as_req = FALSE
+)
 }
 \arguments{
 \item{endpoint}{The full URL for the API request.}
