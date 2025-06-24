@@ -236,13 +236,21 @@ get_crossref_articles <- function(
   # Add cursor for deep paging
   query_params$cursor <- "*"
 
-  # Incorporate additional filters if provided.
-  if (!is.null(filters)) {
+  # Incorporate additional filters only when at least one filter was supplied.
+  # An empty `filters` list would otherwise append an empty `filter=` query
+  # parameter, which Crossref treats as an invalid request and returns HTTP
+  # 400. We therefore add the `filter` parameter **only** when `filters` has
+  # length greater than zero.
+  if (!is.null(filters) && length(filters) > 0) {
     # Convert the filters list to a comma-separated string of key:value pairs.
     filter_vec <- purrr::imap_chr(filters, function(val, key) {
       paste0(key, ":", val)
     })
-    query_params$filter <- paste(filter_vec, collapse = ",")
+
+    # Only attach the filter parameter if at least one pair was generated.
+    if (length(filter_vec) > 0) {
+      query_params$filter <- paste(filter_vec, collapse = ",")
+    }
   }
 
   # First call to get total results count

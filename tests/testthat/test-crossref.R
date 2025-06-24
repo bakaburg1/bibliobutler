@@ -220,3 +220,25 @@ test_that("cr_prepare_ids handles various ID formats", {
     cr_prepare_ids(character(0))
   )
 })
+
+# Tests for empty filters behaviour ---
+
+test_that("get_crossref_articles() handles empty filters without error", {
+  skip_on_cran()
+
+  # The function previously failed with HTTP 400 when no filters were supplied
+  # because an empty `filter=` query parameter was appended. This test ensures
+  # that the call succeeds and returns a data frame.
+  expect_no_error(
+    {
+      res <- get_crossref_articles(
+        query = "machine learning",
+        max_results = 5,
+        per_page = 5
+      )
+    }
+  )
+
+  expect_s3_class(res, "data.frame")
+  expect_gt(nrow(res), 0)
+})
