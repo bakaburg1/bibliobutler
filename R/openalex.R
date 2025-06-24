@@ -400,7 +400,11 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
       query = query_params
     )
     out_df <- if (!is.null(resp$results)) {
-      as.data.frame(resp$results, stringsAsFactors = FALSE)
+      if (is.data.frame(resp$results)) {
+        resp$results
+      } else {
+        as.data.frame(resp$results)
+      }
     } else {
       data.frame()
     }
@@ -557,11 +561,10 @@ oa_fetch_by_query <- function(
         query = query_params
       )
 
-      if (!is.null(resp_data$results)) {
-        all_results[[page]] <- as.data.frame(
-          resp_data$results,
-          stringsAsFactors = FALSE
-        )
+      if (is.data.frame(resp_data$results)) {
+        all_results[[page]] <- resp_data$results
+      } else {
+        all_results[[page]] <- as.data.frame(resp_data$results)
       }
     }
   } else {
@@ -599,14 +602,10 @@ oa_fetch_by_query <- function(
     all_results <- purrr::map(resps, \(resp) {
       if (inherits(resp, "httr2_response")) {
         json_resp <- httr2::resp_body_json(resp, simplifyVector = TRUE)
-        if (!is.null(json_resp$results)) {
-          # Check if results is already a data frame (single result) or needs conversion
-          if (is.data.frame(json_resp$results)) {
-            return(json_resp$results)
-          } else {
-            # Multiple results - convert to data frame
-            return(as.data.frame(json_resp$results, stringsAsFactors = FALSE))
-          }
+        if (is.data.frame(json_resp$results)) {
+          return(json_resp$results)
+        } else {
+          return(as.data.frame(json_resp$results))
         }
       } else {
         msg_warn("Failed to fetch a page: {conditionMessage(resp)}")
@@ -1001,8 +1000,21 @@ oa_process_response <- function(data) {
     return(FALSE)
   })
 
-  # Extract abstracts
-  abstract_vec <- oa_extract_abstract(data[["abstract_inverted_index"]])
+  # Extract abstracts -------------------------------------------------------
+  abstract_raw <- data[["abstract_inverted_index"]]
+
+  # The API sometimes returns this field as a data.frame where each row is the
+  # inverted index for that work (columns = words). Convert that variant to a
+  # proper list-of-lists so the extractor can work uniformly.
+  if (is.data.frame(abstract_raw)) {
+    abstract_list <- purrr::map(seq_len(n_rows), \(i) {
+      as.list(abstract_raw[i, , drop = TRUE])
+    })
+  } else {
+    abstract_list <- abstract_raw
+  }
+
+  abstract_vec <- oa_extract_abstract(abstract_list)
   if (length(abstract_vec) != n_rows) {
     abstract_vec <- rep(NA_character_, n_rows)
   }
@@ -1049,38 +1061,47 @@ oa_process_response <- function(data) {
 #'
 #' @keywords internal
 oa_extract_abstract <- function(abstract_inverted_index) {
-  if (is.null(abstract_inverted_index)) {
+  # Return an empty character vector early if the input is NULL or empty.
+  if (is.null(abstract_inverted_index) || length(abstract_inverted_index) == 0) {
     return(character(0))
   }
 
-  purrr::map_chr(abstract_inverted_index, \(inv_index) {
-    if (is.null(inv_index) || length(inv_index) == 0) {
-      return(NA_character_)
-    }
+  # Use vapply for a fast and type-stable loop over the list elements.
+  vapply(
+    abstract_inverted_index,
+    FUN.VALUE = character(1),
+    FUN = function(inv_index) {
+      if (is.null(inv_index) || length(inv_index) == 0) {
+        return(NA_character_)
+      }
 
-    # Convert inverted index back to text
-    try(
-      {
-        # Create word-position pairs
-        word_positions <- purrr::imap_dfr(
-          inv_index,
-          ~ data.frame(
-            word = .y,
-            position = as.integer(.x),
-            stringsAsFactors = FALSE
-          )
-        )
-
-        # Sort by position and reconstruct text
-        if (nrow(word_positions) > 0) {
-          word_positions <- word_positions[order(word_positions$position), ]
-          paste(word_positions$word, collapse = " ")
+      # The inverted index may arrive either as a plain list (expected) or as
+      # a single-row data.frame whose columns are those lists (this happens
+      # when the JSON was converted with `as.data.frame()`). Normalise the
+      # latter to a named list.
+      if (is.data.frame(inv_index)) {
+        if (nrow(inv_index) == 1) {
+          inv_index <- as.list(inv_index[1, , drop = TRUE])
         } else {
-          NA_character_
+          return(NA_character_)
         }
-      },
-      silent = TRUE
-    ) %||%
-      NA_character_
-  })
+      }
+
+      # Flatten the inverted index: some API variants nest each numeric vector
+      # inside an extra list layer. Unlist recursively to get the integer
+      # positions, then replicate word labels by the *actual* vector lengths.
+      positions <- unlist(inv_index, recursive = TRUE, use.names = FALSE)
+      word_lens <- vapply(inv_index, function(x) length(unlist(x)), integer(1))
+      words     <- rep(names(inv_index), word_lens)
+
+      # Guard against malformed inputs that could produce length mismatches.
+      if (length(positions) == 0 || length(positions) != length(words)) {
+        return(NA_character_)
+      }
+
+      # Reconstruct and return the abstract.
+      paste(words[order(positions)], collapse = " ")
+    },
+    USE.NAMES = FALSE
+  )
 }
