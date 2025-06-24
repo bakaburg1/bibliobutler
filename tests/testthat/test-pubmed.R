@@ -387,13 +387,16 @@ test_that("pm_make_request correctly handles API requests with proper parameters
   )
   # Remove NULL parameters
   direct_params <- direct_params[!sapply(direct_params, is.null)]
-  
+
   direct_response <- httr2::request(endpoint) |>
     httr2::req_url_query(!!!direct_params) |>
     httr2::req_perform()
 
   # Check that both responses have the same status code using httr2 functions
-  expect_equal(httr2::resp_status(response), httr2::resp_status(direct_response))
+  expect_equal(
+    httr2::resp_status(response),
+    httr2::resp_status(direct_response)
+  )
   expect_equal(httr2::resp_status(response), 200)
 
   # Check that both responses have similar content
@@ -414,4 +417,39 @@ test_that("pm_make_request correctly handles API requests with proper parameters
   response_post <- pm_make_request(endpoint, params, method = "POST")
   expect_s3_class(response_post, "httr2_response")
   expect_equal(httr2::resp_status(response_post), 200)
+})
+
+test_that("get_pubmed_article returns expected structure for a query", {
+  skip_on_cran()
+
+  # Use a generic biomedical query with limited results to keep the test fast
+  results <- get_pubmed_article(
+    query = "machine learning",
+    max_results = 5
+  )
+
+  # Basic structure checks
+  expect_s3_class(results, "data.frame")
+  expect_gt(nrow(results), 0)
+  expect_lte(nrow(results), 5)
+
+  # Expected column set (same as other PubMed tests)
+  expected_columns <- c(
+    ".api",
+    "pmid",
+    "doi",
+    "title",
+    "abstract",
+    "authors",
+    "year",
+    "journal",
+    "pubtype"
+  )
+  expect_named(results, expected_columns, ignore.order = TRUE)
+
+  # API column should be correctly set
+  expect_identical(unique(results$.api), "pubmed")
+
+  # Year column should be numeric or NA
+  expect_type(results$year, "integer")
 })
