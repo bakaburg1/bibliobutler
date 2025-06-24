@@ -50,9 +50,8 @@ get_crossref_articles <- function(
   per_page = 1000,
   max_results = Inf
 ) {
-  # -------------------------------------------------------------
+
   # DEBUG TIMING (overall)
-  # -------------------------------------------------------------
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
   on.exit(
