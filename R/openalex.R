@@ -116,17 +116,20 @@ get_openalex_articles <- function(
   if (!is.null(year_filter)) {
     year_params <- oa_parse_year_filter(year_filter)
     if (is.null(filters)) filters <- list()
-    if (!is.null(year_params$from)) filters$from_publication_date <- year_params$from
+    if (!is.null(year_params$from))
+      filters$from_publication_date <- year_params$from
     if (!is.null(year_params$to)) filters$to_publication_date <- year_params$to
   }
 
   # Process IDs or query
   if (!is.null(ids)) {
     # Handle ID-based requests
-    results <- oa_fetch_by_ids(ids, select_param, filters, per_page, max_results)
+    results <- oa_fetch_by_ids(
+      ids, select_param, filters, per_page, max_results)
   } else {
     # Handle search-based requests
-    results <- oa_fetch_by_query(query, select_param, filters, per_page, max_results)
+    results <- oa_fetch_by_query(
+      query, select_param, filters, per_page, max_results)
   }
 
   # Process and standardize the response
@@ -552,27 +555,30 @@ oa_fetch_by_query <- function(query, select_param, filters, per_page, max_result
 #'
 #' This function creates and executes HTTP requests to the OpenAlex API using
 #' httr2. It includes automatic retry logic, proper user agent configuration,
-#' and support for API keys. Can return either the response data or the
-#' request object for use in parallel processing.
+#' and support for API keys. Can return either the response data or the request
+#' object for use in parallel processing.
 #'
 #' @param url API endpoint URL
 #' @param method HTTP method (default "GET")
 #' @param query Named list of query parameters to include in the URL
 #' @param body Request body (for POST requests)
-#' @param as_req If TRUE, return httr2 request object instead of performing request
+#' @param as_req If TRUE, return httr2 request object instead of performing
+#'   request
 #'
-#' @return If `as_req = FALSE`, returns parsed JSON response. If `as_req = TRUE`,
-#'   returns httr2 request object for use with `httr2::req_perform_parallel()`.
-#'   
+#' @return If `as_req = FALSE`, returns parsed JSON response. If `as_req =
+#'   TRUE`, returns httr2 request object for use with
+#'   `httr2::req_perform_parallel()`.
+#'
 #' @details The function automatically includes:
-#'   - User agent string with package name and email (if configured)
-#'   - API key from `getOption("bibliobutler.openalex_key")` if available
-#'   - 30-second timeout
-#'   - Retry logic (3 attempts with exponential backoff)
-#'   - Debug logging when `getOption("bibliobutler.dev_mode")` is TRUE
-#'   
+#' - User agent string with package name and email (if configured)
+#' - API key from `getOption("bibliobutler.openalex_key")` if available
+#' - 30-second timeout
+#' - Retry logic (3 attempts with exponential backoff)
+#' - Debug logging when `getOption("bibliobutler.dev_mode")` is TRUE
+#'
 #' @keywords internal
-oa_make_api_call <- function(url, method = "GET", query = NULL, body = NULL, as_req = FALSE) {
+oa_make_api_call <- function(
+  url, method = "GET", query = NULL, body = NULL, as_req = FALSE) {
   # Get email and API key from options
   email <- getOption("bibliobutler.openalex_email")
   api_key <- getOption("bibliobutler.openalex_key")
@@ -609,7 +615,7 @@ oa_make_api_call <- function(url, method = "GET", query = NULL, body = NULL, as_
 
   # Add body for POST requests
   if (method == "POST" && !is.null(body)) {
-    req <- req |> 
+    req <- req |>
       httr2::req_method("POST") |>
       httr2::req_body_json(body)
   }
@@ -641,7 +647,7 @@ oa_make_api_call <- function(url, method = "GET", query = NULL, body = NULL, as_
 #'     \item `type` - One of "doi", "pmid", "pmcid", or "openalex"
 #'     \item `id` - Cleaned and standardized ID string
 #'   }
-#'   
+#'
 #' @details ID type detection rules:
 #'   - OpenAlex IDs: URLs starting with "https://openalex.org/W" or strings matching "W\\d+"
 #'   - DOIs: Strings starting with "10."
@@ -903,6 +909,7 @@ oa_process_response <- function(data) {
   result <- data.frame(
     .record_name = paste0("openalex_", seq_len(n_rows)),
     .paperId = remove_url_from_id(data[["id"]] %||% rep(NA_character_, n_rows)),
+    doi = remove_url_from_id(data[["doi"]] %||% rep(NA_character_, n_rows)),
     .url = url_vec,
     .title = data[["title"]] %||% rep(NA_character_, n_rows),
     .abstract = abstract_vec,
