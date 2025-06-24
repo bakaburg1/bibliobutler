@@ -281,7 +281,6 @@ process_batch_response <- function(response, include_raw = FALSE) {
 #'   increase memory usage.
 #' @param concurrent Logical, whether to send HTTP requests concurrently.
 #'   Default is TRUE. Set to FALSE for sequential HTTP requests.
-
 #'
 #' @return A data frame containing article metadata from PubMed with
 #' standardized columns:
@@ -358,6 +357,15 @@ get_pubmed_article <- function(
   per_page = 1000,
   concurrent = TRUE
 ) {
+  debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
+  if (debug_mode) func_start <- Sys.time()
+  on.exit({
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      msg_status("DEBUG: Total get_pubmed_article() time: {elapsed} s")
+    }
+  }, add = TRUE)
+
   msg_info("Starting PubMed article retrieval...")
 
   # Input validation
@@ -620,6 +628,15 @@ get_pubmed_linked <- function(
   ids,
   links = c("citations", "references", "related")
 ) {
+  debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
+  if (debug_mode) func_start <- Sys.time()
+  on.exit({
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      msg_status("DEBUG: Total get_pubmed_linked() time: {elapsed} s")
+    }
+  }, add = TRUE)
+
   # Validate and select the link types
   links <- match.arg(links, several.ok = TRUE)
 

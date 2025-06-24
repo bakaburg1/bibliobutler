@@ -81,6 +81,13 @@ get_openalex_articles <- function(
   per_page = 200,
   max_results = Inf
 ) {
+  
+  # Debug timing setup for dev_mode profiling
+  debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
+  if (debug_mode) {
+    overall_start <- Sys.time()
+  }
+
   # Input validation
   if (!is.null(ids) && !is.null(query)) {
     stop("Use only one of `ids` or `query` as arguments.")
@@ -123,6 +130,7 @@ get_openalex_articles <- function(
 
   # Process IDs or query
   if (!is.null(ids)) {
+    if (debug_mode) fetch_start <- Sys.time()
     # Handle ID-based requests
     results <- oa_fetch_by_ids(
       ids,
@@ -131,7 +139,12 @@ get_openalex_articles <- function(
       per_page,
       max_results
     )
+    if (debug_mode) {
+      fetch_time <- round(as.numeric(Sys.time() - fetch_start, units = "secs"), 2)
+      msg_status("DEBUG: Fetch step (ids/query) took {fetch_time} s")
+    }
   } else {
+    if (debug_mode) fetch_start <- Sys.time()
     # Handle search-based requests
     results <- oa_fetch_by_query(
       query,
@@ -140,14 +153,24 @@ get_openalex_articles <- function(
       per_page,
       max_results
     )
+    if (debug_mode) {
+      fetch_time <- round(as.numeric(Sys.time() - fetch_start, units = "secs"), 2)
+      msg_status("DEBUG: Fetch step (ids/query) took {fetch_time} s")
+    }
   }
 
   # Process and standardize the response
-  if (getOption("bibliobutler.dev_mode", FALSE)) {
+  if (debug_mode) {
     msg_status("🔍 DEBUG: Raw results before processing: {nrow(results)} rows")
   }
+
+  if (debug_mode) proc_start <- Sys.time()
+
   output <- oa_process_response(results)
-  if (getOption("bibliobutler.dev_mode", FALSE)) {
+
+  if (debug_mode) {
+    proc_time <- round(as.numeric(Sys.time() - proc_start, units = "secs"), 2)
+    msg_status("DEBUG: Processing step took {proc_time} s")
     msg_status("🔍 DEBUG: Processed results: {nrow(output)} rows")
   }
 
@@ -155,6 +178,14 @@ get_openalex_articles <- function(
     msg_warn("No OpenAlex results found for the given input.")
   } else {
     msg_success("Fetched {nrow(output)} results from OpenAlex")
+  }
+
+  # -------------------------------------------------------------
+  # DEBUG TIMING SUMMARY
+  # -------------------------------------------------------------
+  if (debug_mode) {
+    total_time <- round(as.numeric(Sys.time() - overall_start, units = "secs"), 2)
+    msg_status("DEBUG: Total get_openalex_articles() time: {total_time} s")
   }
 
   output
@@ -212,6 +243,15 @@ get_openalex_linked <- function(
   links = c("citations", "references", "related"),
   max_results = Inf
 ) {
+  debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
+  if (debug_mode) func_start <- Sys.time()
+  on.exit({
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      msg_status("DEBUG: Total get_openalex_linked() time: {elapsed} s")
+    }
+  }, add = TRUE)
+
   links <- match.arg(links, several.ok = TRUE)
 
   # Helper: given source_ids and a list column of linked IDs, return a

@@ -50,6 +50,18 @@ get_crossref_articles <- function(
   per_page = 1000,
   max_results = Inf
 ) {
+  # -------------------------------------------------------------
+  # DEBUG TIMING (overall)
+  # -------------------------------------------------------------
+  debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
+  if (debug_mode) func_start <- Sys.time()
+  on.exit({
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      msg_status("DEBUG: Total get_crossref_articles() time: {elapsed} s")
+    }
+  }, add = TRUE)
+
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: get_crossref_articles called")
     msg_status(
@@ -339,6 +351,15 @@ get_crossref_linked <- function(
   ids,
   links = c("references")
 ) {
+  debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
+  if (debug_mode) func_start <- Sys.time()
+  on.exit({
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      msg_status("DEBUG: Total get_crossref_linked() time: {elapsed} s")
+    }
+  }, add = TRUE)
+
   # Check for empty input first
   if (length(ids) == 0) {
     stop("No valid IDs provided.")
