@@ -506,7 +506,8 @@ remove_url_from_id <- function(ids) {
 #'   mirai::daemons(2); # start two workers safe_mirai_map(1:3, ~.x * 2)[] #
 #'   parallel, then collect
 safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
-  # Logging setup -------------------------------------------------
+  # Logging setup
+
   # Use a filesystem-safe timestamp (no spaces or colons) so that the
   # `file()` call succeeds on all operating systems.
   timestamp <- format(Sys.time(), "%Y-%m-%d_%H-%M-%OS3")
