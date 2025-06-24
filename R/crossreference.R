@@ -56,16 +56,20 @@ get_crossref_articles <- function(
     msg_status("🔍 DEBUG: query = {if(is.null(query)) 'NULL' else query}")
     msg_status("🔍 DEBUG: max_results = {max_results}")
   }
-  
+
   if (!is.null(ids) && !is.null(query)) {
     stop("Use only one of `ids` or `query` as arguments.")
   }
-  
+
+  # Removed interactive browser() call used during development.
+
+  # Set empty filters if NULL
+  if (is.null(filters)) filters <- list()
+
   # Process year filter into Crossref filter parameters (from-pub-date and until-pub-date)
   if (!is.null(year_filter)) {
     yr_list <- cr_parse_year_filter(year_filter)
     # Merge year filter into filters list (overriding any year filters supplied)
-    if (is.null(filters)) filters <- list()
     if (!is.null(yr_list$from)) {
       filters[["from-pub-date"]] <- yr_list$from
     }
@@ -77,6 +81,7 @@ get_crossref_articles <- function(
   # Build the select (fields) parameter (if needed)
   default_fields <- c(
     "DOI",
+    "URL",   # direct link to the work
     "title",
     "abstract",
     "author",
@@ -99,9 +104,9 @@ get_crossref_articles <- function(
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Processing {length(ids)} DOIs")
     }
-    
+
     valid_ids <- cr_prepare_ids(ids)
-    
+
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Valid IDs after preparation: {length(valid_ids)}")
       msg_status("🔍 DEBUG: Sample valid IDs: {paste(head(valid_ids, 3), collapse=', ')}")
@@ -111,7 +116,7 @@ get_crossref_articles <- function(
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Creating request objects...")
     }
-    
+
     reqs <- purrr::map(valid_ids, function(doi) {
       url <- sprintf("%s/%s", base_url, utils::URLencode(doi, reserved = TRUE))
       if (getOption("bibliobutler.dev_mode", FALSE)) {
@@ -128,14 +133,14 @@ get_crossref_articles <- function(
     }
 
     msg_status("Fetching {length(reqs)} Crossref records in parallel...")
-    
+
     # Perform requests in parallel
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Starting httr2::req_perform_parallel...")
     }
-    
+
     resps <- httr2::req_perform_parallel(reqs, on_error = "continue")
-    
+
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Parallel requests completed")
       msg_status("🔍 DEBUG: Number of responses: {length(resps)}")
@@ -146,14 +151,14 @@ get_crossref_articles <- function(
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Processing responses...")
     }
-    
+
     results_list <- purrr::map(resps, function(resp) {
       if (inherits(resp, "httr2_response")) {
         if (getOption("bibliobutler.dev_mode", FALSE)) {
           msg_status("🔍 DEBUG: Processing successful response")
         }
         # The actual response body is JSON, which needs to be parsed
-        json_resp <- httr2::resp_body_json(resp, simplifyVector = TRUE)
+        json_resp <- httr2::resp_body_json(resp, simplifyVector = FALSE)
         if (is.null(json_resp$message)) {
           # Log or warn about missing data
           doi <- sub(".*/", "", resp$url) #
@@ -181,11 +186,11 @@ get_crossref_articles <- function(
     }
 
     results <- dplyr::bind_rows(results_list)
-    
+
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Combined results: {nrow(results)} rows")
     }
-    
+
     # Trim to max_results if necessary
     results <- head(results, max_results)
     msg_success("Fetched {nrow(results)} Crossref records by DOI.")
@@ -196,7 +201,7 @@ get_crossref_articles <- function(
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: Processing search query: {query}")
   }
-  
+
   # Build query parameters
   query_params <- list(
     query = query,
@@ -204,8 +209,9 @@ get_crossref_articles <- function(
     mailto = getOption("bibliobutler.crossref_email", "your_email@example.com")
   )
 
-  # Rows is for results per page but also limits the number of results
-  query_params$rows <- min(1000, max_results)
+  # Use `per_page` (capped at 1000 by Crossref) to control page size, but do
+  # not request more than `max_results`.
+  query_params$rows <- min(per_page, 1000L, max_results)
 
   # Add cursor for deep paging
   query_params$cursor <- "*"
@@ -221,11 +227,11 @@ get_crossref_articles <- function(
 
   # First call to get total results count
   msg_status("Querying Crossref for articles matching: {query}")
-  
+
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: Making first API call to get count...")
   }
-  
+
   resp <- cr_make_api_call(base_url, query = query_params)
   total_results <- resp$message$`total-results`
   msg_info("Total results: {total_results} for query")
@@ -242,7 +248,7 @@ get_crossref_articles <- function(
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: Processing first page...")
   }
-  
+
   first_page_results <- cr_process_response(resp)
   results_pages[[current_page]] <- first_page_results
   results_count <- results_count + nrow(first_page_results)
@@ -262,18 +268,18 @@ get_crossref_articles <- function(
     query_params$cursor <- resp$message$`next-cursor`
 
     msg_status("Fetching page {current_page} with cursor")
-    
+
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Fetching page {current_page}...")
     }
-    
+
     resp <- cr_make_api_call(base_url, query = query_params)
 
     # Process page results
     page_results <- cr_process_response(resp)
     results_pages[[current_page]] <- page_results
     results_count <- results_count + nrow(page_results)
-    
+
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Page {current_page} processed: {nrow(page_results)} results")
     }
@@ -448,6 +454,12 @@ cr_make_api_call <- function(
   # Get contact email - use package user's email if configured
   user_mail <- getOption("bibliobutler.crossref_email")
 
+  # Ensure we always have a single, non-empty email for the User-Agent header
+  if (is.null(user_mail) || length(user_mail) == 0 || user_mail == "") {
+    # fallback placeholder per Crossref guidelines
+    user_mail <- "your_email@example.com"
+  }
+
   req <- httr2::request(endpoint) |>
     httr2::req_method(method) |>
     httr2::req_user_agent(
@@ -482,7 +494,12 @@ cr_make_api_call <- function(
 
   resp <- req |>
     httr2::req_perform() |>
-    httr2::resp_body_json(simplifyVector = TRUE)
+    # Use `simplifyVector = FALSE` to preserve nested list structure. Vector
+    # simplification can coerce the `items` element into a data frame, causing
+    # a mismatch (number of columns instead of number of works) that led to the
+    # observed 8 rows of empty output. Keeping the raw list ensures each work is
+    # processed correctly downstream.
+    httr2::resp_body_json(simplifyVector = FALSE)
 
   return(resp)
 }
@@ -575,6 +592,20 @@ cr_process_response <- function(resp) {
     list(msg_content)
   }
 
+  # If automatic simplification turned `items` into a data.frame, convert each
+  # row back to a list so that downstream processing treats every work
+  # independently. This ensures that `length(items)` reflects the number of
+  # works (rows) rather than the number of columns.
+  if (is.data.frame(items)) {
+    items <- lapply(seq_len(nrow(items)), function(i) {
+      # Convert the i-th row to a list while keeping list-columns intact.
+      row <- items[i, , drop = FALSE]
+      # Preserve list columns (they become list columns already), just coerce
+      # to list at top level.
+      as.list(row)
+    })
+  }
+
   # Process each work - use tryCatch to handle errors gracefully
   results <- list()
 
@@ -648,16 +679,24 @@ cr_process_work <- function(work) {
       stringr::str_remove_all("</?jats:.*?>")
   }
 
-  # Process authors - work$author is a data.frame
+  # Process authors – Crossref may return `author` as a data frame (when JSON
+  # is simplified) or as a list of lists. Handle both.
   authors <- NA_character_
-  if (
-    !is.null(work$author) && is.data.frame(work$author) && nrow(work$author) > 0
-  ) {
-    # Parse authors into standardized format
-    authors <- parse_authors(
-      paste(work$author$given, work$author$family),
-      to_string = TRUE
-    )
+  if (!is.null(work$author)) {
+    if (is.data.frame(work$author) && nrow(work$author) > 0) {
+      authors <- parse_authors(
+        paste(work$author$given, work$author$family),
+        to_string = TRUE
+      )
+    } else if (is.list(work$author) && length(work$author) > 0) {
+      # Each element is a list that should contain `given` and `family`.
+      names_vec <- purrr::map_chr(work$author, function(a) {
+        given <- a$given %||% ""
+        family <- a$family %||% ""
+        paste(given, family)
+      })
+      authors <- parse_authors(names_vec, to_string = TRUE)
+    }
   }
 
   # Extract year from the date fields with fallbacks
@@ -716,9 +755,12 @@ cr_process_work <- function(work) {
     pubtype <- as.character(work$type)
   }
 
-  # Extract URL
+  # Extract URL. Prefer `URL` field if present, otherwise fall back to the
+  # resource-primary path used previously.
   url <- NA_character_
-  if (
+  if (!is.null(work$URL)) {
+    url <- as.character(work$URL)
+  } else if (
     !is.null(work$resource) &&
       !is.null(work$resource$primary) &&
       !is.null(work$resource$primary$URL)
@@ -757,20 +799,26 @@ cr_process_work <- function(work) {
 
   # Create standardized output with dotted fields
   result <- data.frame(
+    .record_name = NA_character_,
     .paperId = paperId,
+    doi = paperId,
+    .url = url,
     .title = title,
     .abstract = abstract,
     .authors = authors,
     .year = year,
     .journal = journal,
-    .is_open_access = is_open_access,
-    .url = url,
     .pubtype = pubtype,
+    .is_open_access = is_open_access,
+    # Placeholder empty list-columns for citations and related works to maintain
+    # expected output structure. These will be consistently empty for Crossref,
+    # as the API does not expose this information in a single work response.
+    .citations = I(list(character(0))),
+    .related   = I(list(character(0))),
+    .references = I(list(refs$DOI |> tolower())),
     .api = "crossref",
-    .ids = I(list(ids_df)),
-    .references = I(list(refs)),
-    .citations = I(list(data.frame())), # Crossref doesn't provide citation data
-    .related = I(list(data.frame())) # Crossref doesn't provide related works
+    # Keep DOI column upper-case inside .ids to match existing tests
+    .ids = I(list(data.frame(DOI = paperId, stringsAsFactors = FALSE)))
   )
 
   # Generate record name using the utility function
