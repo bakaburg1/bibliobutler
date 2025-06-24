@@ -474,7 +474,7 @@ get_pubmed_article <- function(
   )
 
   msg_status("Executing PubMed search query...")
-  esearch_request <- create_pm_request(esearch_url, esearch_params, parallel)
+  esearch_request <- create_pm_request(esearch_url, esearch_params, concurrent)
   esearch_response <- httr2::req_perform(esearch_request)
 
   # Parse the response
