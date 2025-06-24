@@ -55,8 +55,10 @@ collect_references <- function(source, query, limit = 100) {
 #' dois <- convert_article_id(ids, to = "doi")
 #'
 #' # Convert DOIs to PMIDs, keeping original if conversion fails
-#' dois <- c("10.1016/s0140-6736(06)68853-3", "10.1111/j.1469-0691.2007.01724.x")
-#' pmids <- convert_article_id(dois, to = "pmid", keep_failed_conversions = TRUE)
+#' dois <- c("10.1016/s0140-6736(06)68853-3",
+#' "10.1111/j.1469-0691.2007.01724.x")
+#' pmids <- convert_article_id(dois,
+#' to = "pmid", keep_failed_conversions = TRUE)
 #' }
 #'
 #' @importFrom dplyr mutate group_split bind_rows n coalesce
@@ -95,57 +97,171 @@ convert_article_id <- function(
     id = ids_no_missings,
     type = id_types
   ) |>
-    mutate(
-      batch = ceiling(seq_len(n()) / 50),
+    dplyr::mutate(
+      batch = ceiling(dplyr::n() / 50),
       .by = "type"
     ) |>
-    group_split(.data[["type"]], .data[["batch"]])
+    dplyr::group_split(.data[["type"]], .data[["batch"]])
 
-  # Process all IDs sequentially for now to avoid complex dependency issues
-  results <- purrr::map(
+  # Process all IDs using safe_mirai_map() to leverage parallel workers when
+  # they are available. The same conversion logic is applied inside the
+  # anonymous function; the relevant internal helpers are passed explicitly so
+  # that they are available to background workers spawned by mirai.
+  results_list <- safe_mirai_map(
     all_ids_df,
-    \(group) {
-      id_type <- unique(group$type)
+    \(group, ...) {
+      # ---- original conversion logic starts ----
+      id_type   <- unique(group$type)
       batch_ids <- group$id
 
-      # Return IDs that are already in the target format
       if (id_type == to) {
-        return(data.frame(original_id = batch_ids, converted_id = batch_ids))
+        return(data.frame(
+          original_id  = batch_ids,
+          converted_id = batch_ids,
+          stringsAsFactors = FALSE
+        ))
       }
 
-      # Get the ids using the appropriate API
+      # Choose the appropriate API based on identifier types
       if (id_type == "semanticscholar" || to == "semanticscholar") {
         api_result <- get_semanticscholar_articles(
-          ids = batch_ids,
+          ids    = batch_ids,
           fields = "externalIds"
         )
       } else {
-        # Default to OpenAlex API for all apart semanticscholar IDs
         api_result <- get_openalex_articles(
-          ids = batch_ids,
-          fields = "ids"
+          ids    = batch_ids,
+          fields = c("ids", "doi", "id")
         )
+      }
+      
+      # If API returns no results for this batch, mark all as not found
+      if (nrow(api_result) == 0) {
+        return(data.frame(
+          original_id  = batch_ids,
+          converted_id = "NF",
+          stringsAsFactors = FALSE
+        ))
       }
 
       id_col_name <- if (id_type == "doi") "doi" else id_type
-      
+
+      # ------------- identifier extraction -------------
+      if (".ids" %in% names(api_result)) {
+        classify_ids <- function(id_df) {
+          vals <- trimws(as.character(unlist(id_df)))
+          vals <- remove_url_from_id(vals)
+
+          first_match <- function(pattern) {
+            pattern <- stringr::regex(pattern, ignore_case = TRUE)
+            hit     <- vals[stringr::str_detect(vals, pattern)]
+            if (length(hit)) hit[1] else NA_character_
+          }
+
+          tibble::tibble(
+            doi      = first_match("^10\\."),
+            pmid     = first_match("^\\d+$"),
+            pmcid    = first_match("^PMC\\d+$"),
+            openalex = first_match("^W\\d+$")
+          )
+        }
+
+        ids_wide <- purrr::map(api_result$.ids, classify_ids) |>
+          dplyr::bind_rows()
+
+        ids_wide <- ids_wide[
+          , setdiff(names(ids_wide), names(api_result)),
+          drop = FALSE
+        ]
+
+        api_result <- dplyr::bind_cols(
+          dplyr::select(api_result, -".ids"),
+          ids_wide
+        )
+
+        if ("openalex" %in% names(api_result)) {
+          is_na_oa <- is.na(api_result$openalex) | api_result$openalex == ""
+          api_result$openalex[is_na_oa] <- remove_url_from_id(
+            api_result$.paperId[is_na_oa]
+          )
+        }
+
+        if (id_type == "doi" && !"doi" %in% names(api_result)) {
+          api_result$doi <- NA_character_
+        }
+
+        if (id_type == "doi") {
+          api_result$doi <- dplyr::coalesce(
+            tolower(api_result$doi),
+            tolower(batch_ids)
+          )
+        }
+      }
+
+      # Case-insensitive matching for DOIs
+      if (id_type == "doi") {
+        batch_ids <- tolower(batch_ids)
+        if (id_col_name %in% names(api_result)) {
+          api_result[[id_col_name]] <- tolower(api_result[[id_col_name]])
+        }
+      }
+
       conversion_df <- dplyr::left_join(
         data.frame(source_id = batch_ids),
-        dplyr::select(api_result$.ids, dplyr::any_of(c(to, id_col_name))),
-        by = setNames(id_col_name, "source_id")
+        dplyr::select(api_result, dplyr::any_of(c(to, id_col_name))),
+        by = stats::setNames(id_col_name, "source_id")
       )
 
       converted_ids <- conversion_df[[to]]
-
       if (to == "doi") converted_ids <- tolower(converted_ids)
 
-      converted_ids <- coalesce(converted_ids, "NF")
-      original_ids <- conversion_df$source_id
+      # Fallback: DOI → PMID via PubMed when OpenAlex mapping is missing
+      if (id_type == "doi" && to == "pmid") {
+        missing_idx <- which(is.na(converted_ids) | converted_ids == "NF")
+        if (length(missing_idx)) {
+          doi_to_pmid <- function(doi) {
+            search_params <- list(
+              db     = "pubmed",
+              term   = sprintf("%s[DOI]", doi),
+              retmode = "json"
+            )
+            resp <- pm_make_request(
+              "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
+              search_params
+            )
+            cont <- try(httr2::resp_body_json(resp), silent = TRUE)
+            if (!inherits(cont, "try-error") &&
+                !is.null(cont$esearchresult$idlist) &&
+                length(cont$esearchresult$idlist) > 0) {
+              return(cont$esearchresult$idlist[[1]])
+            }
+            "NF"
+          }
+          converted_ids[missing_idx] <- purrr::map_chr(
+            batch_ids[missing_idx], doi_to_pmid
+          )
+        }
+      }
 
-      data.frame(original_id = original_ids, converted_id = converted_ids)
-    }
-  ) |>
-    bind_rows()
+      converted_ids <- dplyr::coalesce(converted_ids, "NF")
+      data.frame(
+        original_id  = batch_ids,
+        converted_id = converted_ids,
+        stringsAsFactors = FALSE
+      )
+    },
+    get_semanticscholar_articles = get_semanticscholar_articles,
+    get_openalex_articles        = get_openalex_articles,
+    pm_make_request              = pm_make_request,
+    remove_url_from_id           = remove_url_from_id
+  )
+
+  # Collect asynchronous results when running with parallel workers
+  if (length(results_list) && inherits(results_list[[1]], "mirai")) {
+    results_list <- purrr::map(results_list, `[]`)
+  }
+
+  results <- dplyr::bind_rows(results_list)
 
   # Create the final result as a named vector, preserving original NAs and order
   result <- ids
@@ -153,8 +269,11 @@ convert_article_id <- function(
   # Get non-NA ids
   valid_ids <- ids[!is.na(ids)]
 
-  # Match original ids to results
-  id_matches <- match(valid_ids, results$original_id)
+  # Match original ids to results (case-insensitive for DOIs)
+  id_matches <- match(
+    tolower(valid_ids),
+    tolower(results$original_id)
+  )
 
   # Update result vector with converted ids
   result[!is.na(ids)] <- results$converted_id[id_matches]
