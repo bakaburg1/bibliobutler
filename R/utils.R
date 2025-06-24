@@ -126,10 +126,18 @@ generate_record_name <- function(article_data) {
       authors <- article_data$.authors
     }
 
-    first_author <- authors |>
-      purrr::map_chr(
-        ~ .x$last_name[1] %||% NA_character_
-      )
+    last_name <- authors |>
+      purrr::map_chr(~ .x$last_name[1] %||% "")
+
+    given_name <- authors |>
+      purrr::map_chr(~ .x$first_name[1] %||% "")
+
+    # If the last name is a single character (likely an initial), fall back to
+    # the given name which is more informative (e.g. "Kalaiselvi").
+    first_author <- ifelse(nchar(last_name) <= 1, given_name, last_name)
+
+    # Replace empty strings with NA for consistency
+    first_author[first_author == ""] <- NA_character_
   } else {
     first_author <- rep(NA, nrow(article_data))
   }
@@ -145,6 +153,24 @@ generate_record_name <- function(article_data) {
     remove_stopwords() |>
     stringr::str_trim() |>
     stringr::str_extract("[a-z]{3,}")
+
+  # If first_author is still missing or just an initial, try to recover a
+  # longer token from the raw `.authors` string (before parsing). This handles
+  # cases like "Kalaiselvi K" where the family name is stored as an initial in
+  # the Crossref metadata.
+  need_fallback <- is.na(first_author) | nchar(first_author) <= 1
+  if (any(need_fallback)) {
+    fallback_names <- article_data$.authors[need_fallback] |>
+      purrr::map_chr(function(x) {
+        if (is.null(x) || is.na(x)) return(NA_character_)
+        # Take the text before the first comma, then the first word with >1
+        # characters.
+        first_part <- strsplit(x, ",")[[1]][1]
+        token <- stringr::str_extract(first_part, "[A-Za-z]{2,}")
+        tolower(token)
+      })
+    first_author[need_fallback] <- fallback_names
+  }
 
   # Generate a unique name for the article
   record_names <- sprintf(
@@ -396,10 +422,14 @@ parse_authors <- function(
     # Fix all capital case names
     stringr::str_replace_all("(?<=[A-Z])([A-Z])", \(x) tolower(x)) |>
     purrr::map_chr(\(nm) {
-      ending_initials <- stringr::str_extract_all(nm, "(\\b[A-Z]\\.? ?)+$") |>
+      ending_initials <- stringr::str_extract_all(nm, "(\\b[A-Z]\\.? ?)+$") |> 
         unlist()
 
-      if (!rlang::is_empty(ending_initials)) {
+      # Move trailing initials to the front **only** when there are two or
+      # more initials (e.g. "Doe J K" → "J K Doe").  If there is just a single
+      # initial, keep the original order so that "Kalaiselvi K" is not turned
+      # into "K Kalaiselvi".
+      if (length(ending_initials) > 1) {
         nm <- stringr::str_remove(nm, ending_initials)
         nm <- paste(ending_initials, nm) |> stringr::str_trim()
       }
@@ -407,14 +437,15 @@ parse_authors <- function(
       nm
     }) |>
     humaniformat::parse_names() |>
-    mutate(
-      across(
-        c("first_name", "middle_name"),
-        ~ stringr::str_remove_all(.x, "[^A-Z ]")
-      )
-    ) |>
+    # Keep the parsed names verbatim; we no longer strip lowercase letters so
+    # that given names like "Kalaiselvi" are preserved.
+    identity() |>
     dplyr::mutate(
       last_name = stringr::str_remove_all(.data$last_name, "\\."),
+      clean_last = stringr::str_remove_all(.data$last_name, "\\."),
+      swap_needed = nchar(clean_last) == 1 & nchar(.data$first_name) > 1,
+      last_name  = if_else(swap_needed, .data$first_name, .data$last_name),
+      first_name = if_else(swap_needed, substr(clean_last, 1, 1), .data$first_name),
       own_names = paste(
         .data$first_name,
         if_else(!is.na(.data$middle_name), .data$middle_name, "")
@@ -440,16 +471,16 @@ parse_authors <- function(
 #'
 remove_url_from_id <- function(ids) {
   urls <- c(
-    "doi\\.org",
-    "openalex\\.org",
-    "pubmed\\.ncbi\\.nlm\\.nih\\.gov",
-    "ncbi\\.nlm\\.nih\\.gov/pmc/articles"
+    "doi.org",
+    "openalex.org",
+    "pubmed.ncbi.nlm.nih.gov",
+    "ncbi.nlm.nih.gov/pmc/articles"
   ) |>
     paste(collapse = "|")
 
   stringr::str_remove(
     ids,
-    sprintf("https://(www\\.)?(%s)/", urls)
+    sprintf("https://(www.)?(%s)/", urls)
   )
 }
 
@@ -475,8 +506,16 @@ safe_mirai_map <- function(.x,
                            ...,
                            .args    = list(),
                            .promise = NULL) {
-  # Logging setup
-  log_file <- file.path("logs", paste0("mirai_log_", Sys.time(), ".txt"))
+  # Logging setup -------------------------------------------------
+  # Use a filesystem-safe timestamp (no spaces or colons) so that the
+  # `file()` call succeeds on all operating systems.
+  timestamp <- format(Sys.time(), "%Y-%m-%d_%H-%M-%OS3")
+
+  # Ensure that the logs directory exists.
+  dir.create("logs", showWarnings = FALSE)
+
+  log_file <- file.path("logs", paste0("mirai_log_", timestamp, ".txt"))
+
   log_message <- function(...) {
     write(
       sprintf("[%s] %s", Sys.time(), paste0(...)),
@@ -501,7 +540,10 @@ safe_mirai_map <- function(.x,
     # Add logging wrapper to the function
     .f_logged <- function(...) {
       # This part executes on the worker
-      worker_log_file <- file.path("logs", paste0("worker_", Sys.getpid(), "_", Sys.time(), ".txt"))
+      worker_log_file <- file.path(
+        "logs",
+        paste0("worker_", Sys.getpid(), "_", timestamp, ".txt")
+      )
       worker_log <- function(...) {
         write(
           sprintf("[%s] %s", Sys.time(), paste0(...)),
@@ -533,9 +575,8 @@ safe_mirai_map <- function(.x,
   } else { # sequential branch
     log_message("Executing sequentially.")
     # When no daemons are present, just use purrr::map sequentially.
-    # The ... arguments are automatically available to .f through lexical
-    # scoping.
-    purrr::map(.x, .f)
+    # The ... arguments are forwarded to .f.
+    purrr::map(.x, .f, ...)
   }
 }
 
