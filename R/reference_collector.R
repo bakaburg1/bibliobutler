@@ -111,12 +111,12 @@ convert_article_id <- function(
     all_ids_df,
     \(group, ...) {
       # ---- original conversion logic starts ----
-      id_type   <- unique(group$type)
+      id_type <- unique(group$type)
       batch_ids <- group$id
 
       if (id_type == to) {
         return(data.frame(
-          original_id  = batch_ids,
+          original_id = batch_ids,
           converted_id = batch_ids,
           stringsAsFactors = FALSE
         ))
@@ -125,20 +125,20 @@ convert_article_id <- function(
       # Choose the appropriate API based on identifier types
       if (id_type == "semanticscholar" || to == "semanticscholar") {
         api_result <- get_semanticscholar_articles(
-          ids    = batch_ids,
+          ids = batch_ids,
           fields = "externalIds"
         )
       } else {
         api_result <- get_openalex_articles(
-          ids    = batch_ids,
+          ids = batch_ids,
           fields = c("ids", "doi", "id")
         )
       }
-      
+
       # If API returns no results for this batch, mark all as not found
       if (nrow(api_result) == 0) {
         return(data.frame(
-          original_id  = batch_ids,
+          original_id = batch_ids,
           converted_id = "NF",
           stringsAsFactors = FALSE
         ))
@@ -154,14 +154,14 @@ convert_article_id <- function(
 
           first_match <- function(pattern) {
             pattern <- stringr::regex(pattern, ignore_case = TRUE)
-            hit     <- vals[stringr::str_detect(vals, pattern)]
+            hit <- vals[stringr::str_detect(vals, pattern)]
             if (length(hit)) hit[1] else NA_character_
           }
 
           tibble::tibble(
-            doi      = first_match("^10\\."),
-            pmid     = first_match("^\\d+$"),
-            pmcid    = first_match("^PMC\\d+$"),
+            doi = first_match("^10\\."),
+            pmid = first_match("^\\d+$"),
+            pmcid = first_match("^PMC\\d+$"),
             openalex = first_match("^W\\d+$")
           )
         }
@@ -169,8 +169,8 @@ convert_article_id <- function(
         ids_wide <- purrr::map(api_result$.ids, classify_ids) |>
           dplyr::bind_rows()
 
-        ids_wide <- ids_wide[
-          , setdiff(names(ids_wide), names(api_result)),
+        ids_wide <- ids_wide[,
+          setdiff(names(ids_wide), names(api_result)),
           drop = FALSE
         ]
 
@@ -221,8 +221,8 @@ convert_article_id <- function(
         if (length(missing_idx)) {
           doi_to_pmid <- function(doi) {
             search_params <- list(
-              db     = "pubmed",
-              term   = sprintf("%s[DOI]", doi),
+              db = "pubmed",
+              term = sprintf("%s[DOI]", doi),
               retmode = "json"
             )
             resp <- pm_make_request(
@@ -230,30 +230,33 @@ convert_article_id <- function(
               search_params
             )
             cont <- try(httr2::resp_body_json(resp), silent = TRUE)
-            if (!inherits(cont, "try-error") &&
+            if (
+              !inherits(cont, "try-error") &&
                 !is.null(cont$esearchresult$idlist) &&
-                length(cont$esearchresult$idlist) > 0) {
+                length(cont$esearchresult$idlist) > 0
+            ) {
               return(cont$esearchresult$idlist[[1]])
             }
             "NF"
           }
           converted_ids[missing_idx] <- purrr::map_chr(
-            batch_ids[missing_idx], doi_to_pmid
+            batch_ids[missing_idx],
+            doi_to_pmid
           )
         }
       }
 
       converted_ids <- dplyr::coalesce(converted_ids, "NF")
       data.frame(
-        original_id  = batch_ids,
+        original_id = batch_ids,
         converted_id = converted_ids,
         stringsAsFactors = FALSE
       )
     },
     get_semanticscholar_articles = get_semanticscholar_articles,
-    get_openalex_articles        = get_openalex_articles,
-    pm_make_request              = pm_make_request,
-    remove_url_from_id           = remove_url_from_id
+    get_openalex_articles = get_openalex_articles,
+    pm_make_request = pm_make_request,
+    remove_url_from_id = remove_url_from_id
   )
 
   # Collect asynchronous results when running with parallel workers

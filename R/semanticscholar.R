@@ -125,7 +125,9 @@ get_semanticscholar_articles <- function(
       )
     })
 
-    msg_status("Fetching {length(reqs)} Semantic Scholar batches in parallel...")
+    msg_status(
+      "Fetching {length(reqs)} Semantic Scholar batches in parallel..."
+    )
     # Perform requests in parallel
     resps <- httr2::req_perform_parallel(reqs, on_error = "continue")
 

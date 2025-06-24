@@ -125,6 +125,7 @@ pm_format_results <- function(response, include_raw = FALSE) {
 #' @param endpoint The API endpoint URL.
 #' @param params List of parameters for the request.
 #' @param method HTTP method to use ("GET" or "POST").
+#'
 #' @return An httr2 response object.
 #'
 #' @keywords internal
@@ -177,11 +178,13 @@ pm_make_request <- function(endpoint, params, method = "GET") {
 #' Create a PubMed request with proper retry and throttling
 #'
 #' Internal function to create a request with appropriate retry settings for
-#' PubMed API calls. The function includes exponential backoff for rate limits and server errors.
+#' PubMed API calls. The function includes exponential backoff for rate limits
+#' and server errors.
 #'
 #' @param url The URL to request.
 #' @param params List of parameters for the request.
 #' @param concurrent Whether the request will be part of a concurrent batch.
+#'
 #' @return An httr2 request object.
 #'
 #' @keywords internal
@@ -225,12 +228,15 @@ create_pm_request <- function(url, params, concurrent = FALSE) {
 #' Internal function to process a response from the PubMed API.
 #'
 #' @param response The response object from an API call.
-#' @param include_raw Logical indicating whether to include raw XML in the result.
+#' @param include_raw Logical indicating whether to include raw XML in the
+#'   result.
+#'
 #' @return A data frame of processed article data.
 #'
 #' @keywords internal
 process_batch_response <- function(response, include_raw = FALSE) {
-  # Check if the response is an error object (httr2_perform_parallel returns errors as objects)
+  # Check if the response is an error object (httr2_perform_parallel returns
+  # errors as objects)
   if (inherits(response, "error") || inherits(response, "httr2_http_")) {
     msg_error("API error: {conditionMessage(response)}", stop = FALSE)
     return(data.frame())
@@ -352,7 +358,6 @@ get_pubmed_article <- function(
   per_page = 1000,
   concurrent = TRUE
 ) {
-
   msg_info("Starting PubMed article retrieval...")
 
   # Input validation
@@ -547,7 +552,7 @@ get_pubmed_article <- function(
     # Use httr2's built-in concurrent request functionality
     responses <- httr2::req_perform_parallel(
       requests,
-              max_active = length(requests),
+      max_active = length(requests),
       on_error = "continue" # Use "continue" to process errors but keep going
     )
   } else {

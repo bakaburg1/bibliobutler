@@ -52,7 +52,9 @@ get_crossref_articles <- function(
 ) {
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: get_crossref_articles called")
-    msg_status("🔍 DEBUG: ids = {if(is.null(ids)) 'NULL' else paste(head(ids, 3), collapse=', ')}")
+    msg_status(
+      "🔍 DEBUG: ids = {if(is.null(ids)) 'NULL' else paste(head(ids, 3), collapse=', ')}"
+    )
     msg_status("🔍 DEBUG: query = {if(is.null(query)) 'NULL' else query}")
     msg_status("🔍 DEBUG: max_results = {max_results}")
   }
@@ -81,7 +83,7 @@ get_crossref_articles <- function(
   # Build the select (fields) parameter (if needed)
   default_fields <- c(
     "DOI",
-    "URL",   # direct link to the work
+    "URL", # direct link to the work
     "title",
     "abstract",
     "author",
@@ -109,7 +111,9 @@ get_crossref_articles <- function(
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Valid IDs after preparation: {length(valid_ids)}")
-      msg_status("🔍 DEBUG: Sample valid IDs: {paste(head(valid_ids, 3), collapse=', ')}")
+      msg_status(
+        "🔍 DEBUG: Sample valid IDs: {paste(head(valid_ids, 3), collapse=', ')}"
+      )
     }
 
     # Create a list of request objects
@@ -144,7 +148,9 @@ get_crossref_articles <- function(
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Parallel requests completed")
       msg_status("🔍 DEBUG: Number of responses: {length(resps)}")
-      msg_status("🔍 DEBUG: Response types: {paste(sapply(resps, class), collapse=', ')}")
+      msg_status(
+        "🔍 DEBUG: Response types: {paste(sapply(resps, class), collapse=', ')}"
+      )
     }
 
     # Process the responses
@@ -182,7 +188,9 @@ get_crossref_articles <- function(
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status("🔍 DEBUG: Processed all responses")
-      msg_status("🔍 DEBUG: Non-null results: {sum(!sapply(results_list, is.null))}")
+      msg_status(
+        "🔍 DEBUG: Non-null results: {sum(!sapply(results_list, is.null))}"
+      )
     }
 
     results <- dplyr::bind_rows(results_list)
@@ -254,7 +262,9 @@ get_crossref_articles <- function(
   results_count <- results_count + nrow(first_page_results)
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: First page processed: {nrow(first_page_results)} results")
+    msg_status(
+      "🔍 DEBUG: First page processed: {nrow(first_page_results)} results"
+    )
   }
 
   # Continue fetching pages while we have a next cursor and haven't reached
@@ -281,7 +291,9 @@ get_crossref_articles <- function(
     results_count <- results_count + nrow(page_results)
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Page {current_page} processed: {nrow(page_results)} results")
+      msg_status(
+        "🔍 DEBUG: Page {current_page} processed: {nrow(page_results)} results"
+      )
     }
   }
 
@@ -727,8 +739,7 @@ cr_process_work <- function(work) {
     if (is.array(date_parts) && length(date_parts) > 0) {
       # In this case, we're interested in the first element of the first row
       year <- as.character(date_parts[1, 1])
-    } # Also handle the case where it might be a list
-    else if (is.list(date_parts) && length(date_parts) > 0) {
+    } else if (is.list(date_parts) && length(date_parts) > 0) { # Also handle the case where it might be a list
       if (length(date_parts[[1]]) > 0) {
         year <- as.character(date_parts[[1]][[1]])
       }
@@ -814,7 +825,7 @@ cr_process_work <- function(work) {
     # expected output structure. These will be consistently empty for Crossref,
     # as the API does not expose this information in a single work response.
     .citations = I(list(character(0))),
-    .related   = I(list(character(0))),
+    .related = I(list(character(0))),
     .references = I(list(refs$DOI |> tolower())),
     .api = "crossref",
     # Keep DOI column upper-case inside .ids to match existing tests

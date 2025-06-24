@@ -31,13 +31,13 @@ msg_warn <- function(..., appendLF = TRUE) {
 msg_error <- function(..., appendLF = TRUE, stop = TRUE) {
   # The message to be displayed
   error_message <- stringr::str_glue(.envir = parent.frame(), ...)
-  
+
   # Display the message
   message(
     crayon::red("✖", error_message),
     appendLF = appendLF
   )
-  
+
   # Stop execution with the message
   if (stop) {
     stop(error_message, call. = FALSE)

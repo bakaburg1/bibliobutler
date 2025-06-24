@@ -422,7 +422,7 @@ parse_authors <- function(
     # Fix all capital case names
     stringr::str_replace_all("(?<=[A-Z])([A-Z])", \(x) tolower(x)) |>
     purrr::map_chr(\(nm) {
-      ending_initials <- stringr::str_extract_all(nm, "(\\b[A-Z]\\.? ?)+$") |> 
+      ending_initials <- stringr::str_extract_all(nm, "(\\b[A-Z]\\.? ?)+$") |>
         unlist()
 
       # Move trailing initials to the front **only** when there are two or
@@ -444,8 +444,12 @@ parse_authors <- function(
       last_name = stringr::str_remove_all(.data$last_name, "\\."),
       clean_last = stringr::str_remove_all(.data$last_name, "\\."),
       swap_needed = nchar(clean_last) == 1 & nchar(.data$first_name) > 1,
-      last_name  = if_else(swap_needed, .data$first_name, .data$last_name),
-      first_name = if_else(swap_needed, substr(clean_last, 1, 1), .data$first_name),
+      last_name = if_else(swap_needed, .data$first_name, .data$last_name),
+      first_name = if_else(
+        swap_needed,
+        substr(clean_last, 1, 1),
+        .data$first_name
+      ),
       own_names = paste(
         .data$first_name,
         if_else(!is.na(.data$middle_name), .data$middle_name, "")
@@ -501,11 +505,7 @@ remove_url_from_id <- function(ids) {
 #' @examples safe_mirai_map(1:3, ~.x * 2) # sequential if no daemons()
 #'   mirai::daemons(2); # start two workers safe_mirai_map(1:3, ~.x * 2)[] #
 #'   parallel, then collect
-safe_mirai_map <- function(.x,
-                           .f,
-                           ...,
-                           .args    = list(),
-                           .promise = NULL) {
+safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
   # Logging setup -------------------------------------------------
   # Use a filesystem-safe timestamp (no spaces or colons) so that the
   # `file()` call succeeds on all operating systems.
@@ -530,9 +530,14 @@ safe_mirai_map <- function(.x,
   current_daemons <- mirai::daemons()
   daemons_available <- current_daemons$connections > 0
 
-  if (daemons_available) { # parallel branch
-    log_message("Executing in parallel with ", current_daemons$connections, " workers.")
-    
+  if (daemons_available) {
+    # parallel branch
+    log_message(
+      "Executing in parallel with ",
+      current_daemons$connections,
+      " workers."
+    )
+
     # Capture the unevaluated expression for logging
     f_expr <- rlang::enexpr(.f)
     log_message("Function to apply: ", rlang::expr_text(f_expr))
@@ -553,26 +558,29 @@ safe_mirai_map <- function(.x,
       }
 
       worker_log("Worker started for an item.")
-      
+
       # Try to execute the original function
-      tryCatch({
-        result <- .f(...)
-        worker_log("Function executed successfully.")
-        return(result)
-      }, error = function(e) {
-        worker_log("!!! ERROR in worker: ", conditionMessage(e))
-        worker_log("Backtrace: ", paste(capture.output(rlang::trace_back()), collapse = "\n"))
-        # Re-throw the error so mirai can see it
-        stop(e)
-      })
+      tryCatch(
+        {
+          result <- .f(...)
+          worker_log("Function executed successfully.")
+          return(result)
+        },
+        error = function(e) {
+          worker_log("!!! ERROR in worker: ", conditionMessage(e))
+          worker_log(
+            "Backtrace: ",
+            paste(capture.output(rlang::trace_back()), collapse = "\n")
+          )
+          # Re-throw the error so mirai can see it
+          stop(e)
+        }
+      )
     }
 
-    mirai::mirai_map(.x, .f_logged,
-      ...,
-      .args = .args,
-      .promise = .promise
-    )
-  } else { # sequential branch
+    mirai::mirai_map(.x, .f_logged, ..., .args = .args, .promise = .promise)
+  } else {
+    # sequential branch
     log_message("Executing sequentially.")
     # When no daemons are present, just use purrr::map sequentially.
     # The ... arguments are forwarded to .f.
@@ -611,11 +619,10 @@ safe_mirai_map <- function(.x,
 #'
 #' @export
 enable_parallel <- function(workers = parallel::detectCores() - 1) {
-  
   if (workers < 1) {
     stop("workers must be at least 1")
   }
-  
+
   # Check for existing daemons
   current_daemons <- mirai::daemons()
   if (current_daemons$daemons > 0) {
@@ -623,12 +630,12 @@ enable_parallel <- function(workers = parallel::detectCores() - 1) {
     mirai::daemons(0)
     msg_info("Stopped existing {current_daemons$daemons} workers")
   }
-  
+
   # Start new daemons
   mirai::daemons(workers)
-  
+
   msg_success("Enabled parallel processing with {workers} workers")
-  
+
   invisible(workers)
 }
 
@@ -649,11 +656,12 @@ enable_parallel <- function(workers = parallel::detectCores() - 1) {
 #'
 #' @export
 disable_parallel <- function() {
-  
   current_daemons <- mirai::daemons()
   if (current_daemons$daemons > 0) {
     mirai::daemons(0)
-    msg_success("Disabled parallel processing ({current_daemons$daemons} workers stopped)")
+    msg_success(
+      "Disabled parallel processing ({current_daemons$daemons} workers stopped)"
+    )
     invisible(TRUE)
   } else {
     msg_info("No parallel workers were running")

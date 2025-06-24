@@ -125,11 +125,21 @@ get_openalex_articles <- function(
   if (!is.null(ids)) {
     # Handle ID-based requests
     results <- oa_fetch_by_ids(
-      ids, select_param, filters, per_page, max_results)
+      ids,
+      select_param,
+      filters,
+      per_page,
+      max_results
+    )
   } else {
     # Handle search-based requests
     results <- oa_fetch_by_query(
-      query, select_param, filters, per_page, max_results)
+      query,
+      select_param,
+      filters,
+      per_page,
+      max_results
+    )
   }
 
   # Process and standardize the response
@@ -183,13 +193,13 @@ get_openalex_articles <- function(
 #' \dontrun{
 #' # Get all types of linked articles for a single DOI
 #' get_openalex_linked("10.1371/journal.pone.0266781")
-#' 
+#'
 #' # Get only citations and references for multiple articles
 #' get_openalex_linked(
 #'   c("10.1371/journal.pone.0266781", "10.1371/journal.pone.0267149"),
 #'   links = c("citations", "references")
 #' )
-#' 
+#'
 #' # Get only references with OpenAlex IDs
 #' get_openalex_linked(
 #'   c("W2741809807", "W123456789"),
@@ -315,9 +325,9 @@ get_openalex_linked <- function(
 oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
   # Prepare and validate IDs
   prepared_ids <- oa_prepare_ids(ids)
-  
+
   msg_info("Total results: {length(prepared_ids)} for ID query")
-  
+
   if (length(prepared_ids) > max_results) {
     msg_info("(retrieving first {max_results} results)")
     prepared_ids <- head(prepared_ids, max_results)
@@ -325,10 +335,13 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
 
   # Build helper to convert a named list of ids-by-type into query params
   make_query <- function(type_vec) {
-    filter_parts <- purrr::imap_chr(type_vec, ~ paste0(.y, ":", paste(.x, collapse = "|")))
+    filter_parts <- purrr::imap_chr(
+      type_vec,
+      ~ paste0(.y, ":", paste(.x, collapse = "|"))
+    )
     list(
-      filter   = paste(filter_parts, collapse = ","),
-      select   = select_param,
+      filter = paste(filter_parts, collapse = ","),
+      select = select_param,
       per_page = min(per_page, 200)
     )
   }
@@ -341,7 +354,11 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
   if (all(purrr::map_int(ids_by_type, ~ length(.x)) <= 50)) {
     msg_status("Using single OpenAlex call (<=50 ids per attribute)")
     query_params <- make_query(ids_by_type)
-    resp <- oa_make_api_call("https://api.openalex.org/works", "GET", query = query_params)
+    resp <- oa_make_api_call(
+      "https://api.openalex.org/works",
+      "GET",
+      query = query_params
+    )
     out_df <- if (!is.null(resp$results)) {
       as.data.frame(resp$results, stringsAsFactors = FALSE)
     } else {
@@ -350,16 +367,16 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
     return(out_df)
   }
 
-  # Otherwise, build batches respecting the 50-id rule per attribute  
+  # Otherwise, build batches respecting the 50-id rule per attribute
   # Determine number of chunks needed per type
-  chunks_per_type <- purrr::map_int(ids_by_type, ~ ceiling(length(.x)/50))
+  chunks_per_type <- purrr::map_int(ids_by_type, ~ ceiling(length(.x) / 50))
   max_chunks <- max(chunks_per_type)
 
   batch_list <- vector("list", max_chunks)
   for (i in seq_len(max_chunks)) {
     slice_by_type <- purrr::map(ids_by_type, \(vec) {
-      start <- (i-1)*50 + 1
-      end   <- min(i*50, length(vec))
+      start <- (i - 1) * 50 + 1
+      end <- min(i * 50, length(vec))
       if (start > length(vec)) return(character(0))
       vec[start:end]
     })
@@ -375,12 +392,15 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
   msg_status("Fetching {length(batch_list)} OpenAlex ID batches in parallel…")
 
   # Create request objects
-  reqs <- purrr::map(batch_list, ~ oa_make_api_call(
-    "https://api.openalex.org/works",
-    "GET",
-    query = .x,
-    as_req = TRUE
-  ))
+  reqs <- purrr::map(
+    batch_list,
+    ~ oa_make_api_call(
+      "https://api.openalex.org/works",
+      "GET",
+      query = .x,
+      as_req = TRUE
+    )
+  )
 
   # Perform in parallel (if more than one batch) or sequential
   if (length(reqs) == 1) {
@@ -424,17 +444,23 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
 #' @return Data frame of raw results from the OpenAlex API
 #'
 #' @keywords internal
-oa_fetch_by_query <- function(query, select_param, filters, per_page, max_results) {
+oa_fetch_by_query <- function(
+  query,
+  select_param,
+  filters,
+  per_page,
+  max_results
+) {
   # First, get the total count
   count_params <- list(
     per_page = 1
   )
-  
+
   # Add search query if provided
   if (!is.null(query)) {
     count_params$search <- query
   }
-  
+
   # Add filters to count query
   if (!is.null(filters)) {
     filter_strings <- purrr::imap_chr(filters, ~ paste0(.y, ":", .x))
@@ -473,12 +499,12 @@ oa_fetch_by_query <- function(query, select_param, filters, per_page, max_result
         per_page = per_page,
         page = page
       )
-      
+
       # Add search query if provided
       if (!is.null(query)) {
         query_params$search <- query
       }
-      
+
       # Add filters
       if (!is.null(filters)) {
         filter_strings <- purrr::imap_chr(filters, ~ paste0(.y, ":", .x))
@@ -490,9 +516,12 @@ oa_fetch_by_query <- function(query, select_param, filters, per_page, max_result
         "GET",
         query = query_params
       )
-      
+
       if (!is.null(resp_data$results)) {
-        all_results[[page]] <- as.data.frame(resp_data$results, stringsAsFactors = FALSE)
+        all_results[[page]] <- as.data.frame(
+          resp_data$results,
+          stringsAsFactors = FALSE
+        )
       }
     }
   } else {
@@ -503,12 +532,12 @@ oa_fetch_by_query <- function(query, select_param, filters, per_page, max_result
         per_page = per_page,
         page = page
       )
-      
+
       # Add search query if provided
       if (!is.null(query)) {
         query_params$search <- query
       }
-      
+
       # Add filters
       if (!is.null(filters)) {
         filter_strings <- purrr::imap_chr(filters, ~ paste0(.y, ":", .x))
@@ -578,11 +607,16 @@ oa_fetch_by_query <- function(query, select_param, filters, per_page, max_result
 #'
 #' @keywords internal
 oa_make_api_call <- function(
-  url, method = "GET", query = NULL, body = NULL, as_req = FALSE) {
+  url,
+  method = "GET",
+  query = NULL,
+  body = NULL,
+  as_req = FALSE
+) {
   # Get email and API key from options
   email <- getOption("bibliobutler.openalex_email")
   api_key <- getOption("bibliobutler.openalex_key")
-  
+
   # Build user agent string
   user_agent <- "bibliobutler R package"
   if (!is.null(email)) {
@@ -594,7 +628,9 @@ oa_make_api_call <- function(
     msg_status("🔍 DEBUG: URL: {url}")
     msg_status("🔍 DEBUG: User-Agent: {user_agent}")
     if (!is.null(query)) {
-      msg_status("🔍 DEBUG: Query params: {paste(names(query), query, sep='=', collapse=', ')}")
+      msg_status(
+        "🔍 DEBUG: Query params: {paste(names(query), query, sep='=', collapse=', ')}"
+      )
     }
   }
 
@@ -654,7 +690,7 @@ oa_make_api_call <- function(
 #'   - PMIDs: Numeric strings (digits only)
 #'   - PMC IDs: Strings matching "PMC\\d+" (case insensitive)
 #'   - Other: Treated as DOI by default
-#'   
+#'
 #' @keywords internal
 oa_prepare_ids <- function(ids) {
   # Remove NAs and empty strings
@@ -670,7 +706,7 @@ oa_prepare_ids <- function(ids) {
   purrr::map(valid_ids, \(id) {
     # Clean the ID
     clean_id <- trimws(id)
-    
+
     # Determine the type and format
     if (grepl("^https://openalex.org/W", clean_id)) {
       # Full OpenAlex URL
@@ -702,17 +738,17 @@ oa_prepare_ids <- function(ids) {
 #' @param year_filter Year filter string in one of several supported formats
 #'
 #' @return List with `from` and `to` date strings (YYYY-MM-DD format) or NULL values
-#'   
+#'
 #' @details Supported year filter formats:
 #'   - Single year: "2020" → from "2020-01-01" to "2020-12-31"
 #'   - Year range: "2018-2020" → from "2018-01-01" to "2020-12-31"
 #'   - Open-ended from: "2018-" → from "2018-01-01", no end date
 #'   - Open-ended to: "-2020" → no start date, to "2020-12-31"
-#'   
+#'
 #' @keywords internal
 oa_parse_year_filter <- function(year_filter) {
   year_filter <- trimws(year_filter)
-  
+
   if (grepl("^\\d{4}$", year_filter)) {
     # Single year: "2020"
     list(
@@ -741,7 +777,12 @@ oa_parse_year_filter <- function(year_filter) {
       to = paste0(year, "-12-31")
     )
   } else {
-    warning("Could not parse year_filter '", year_filter, "'. Ignoring.", call. = FALSE)
+    warning(
+      "Could not parse year_filter '",
+      year_filter,
+      "'. Ignoring.",
+      call. = FALSE
+    )
     list(from = NULL, to = NULL)
   }
 }
@@ -771,7 +812,7 @@ oa_parse_year_filter <- function(year_filter) {
 #'     \item `.api` - Source API identifier ("openalex")
 #'     \item `.ids` - List column of data frames with all available IDs
 #'   }
-#'   
+#'
 #' @keywords internal
 oa_process_response <- function(data) {
   if (nrow(data) == 0) {
@@ -782,51 +823,60 @@ oa_process_response <- function(data) {
 
   # Extract and process authors
   authors_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
-    if (!"authorships" %in% names(data) || is.null(data[["authorships"]]) || 
-        length(data[["authorships"]]) < i) {
+    if (
+      !"authorships" %in% names(data) ||
+        is.null(data[["authorships"]]) ||
+        length(data[["authorships"]]) < i
+    ) {
       return(NA_character_)
     }
     auth_data <- data[["authorships"]][[i]]
-    
+
     if (is.null(auth_data) || nrow(auth_data) == 0) {
       return(NA_character_)
     }
-    
+
     # Extract author names
     auth_names <- auth_data$author$display_name %||% character(0)
-    
+
     if (length(auth_names) == 0) {
       return(NA_character_)
     }
-    
+
     # Parse and format author names
     parsed_names <- try(
       parse_authors(auth_names, to_string = TRUE),
       silent = TRUE
     )
-    
+
     if (inherits(parsed_names, "try-error")) {
       # Fallback to simple concatenation
       return(paste(auth_names, collapse = "; "))
     }
-    
+
     parsed_names
   })
 
   # Extract references and related works
   refs_list <- purrr::map(seq_len(n_rows), \(i) {
-    if (!"referenced_works" %in% names(data) || is.null(data[["referenced_works"]]) || 
-        length(data[["referenced_works"]]) < i) {
+    if (
+      !"referenced_works" %in% names(data) ||
+        is.null(data[["referenced_works"]]) ||
+        length(data[["referenced_works"]]) < i
+    ) {
       return(character(0))
     }
     refs <- data[["referenced_works"]][[i]]
     if (is.null(refs)) return(character(0))
     remove_url_from_id(refs)
   })
-  
+
   related_list <- purrr::map(seq_len(n_rows), \(i) {
-    if (!"related_works" %in% names(data) || is.null(data[["related_works"]]) || 
-        length(data[["related_works"]]) < i) {
+    if (
+      !"related_works" %in% names(data) ||
+        is.null(data[["related_works"]]) ||
+        length(data[["related_works"]]) < i
+    ) {
       return(character(0))
     }
     related <- data[["related_works"]][[i]]
@@ -836,15 +886,18 @@ oa_process_response <- function(data) {
 
   # Extract IDs
   ids_list <- purrr::map(seq_len(n_rows), \(i) {
-    if (!"ids" %in% names(data) || is.null(data[["ids"]]) || 
-        length(data[["ids"]]) < i) {
+    if (
+      !"ids" %in% names(data) ||
+        is.null(data[["ids"]]) ||
+        length(data[["ids"]]) < i
+    ) {
       return(data.frame())
     }
     ids_data <- data[["ids"]][[i]]
     if (is.null(ids_data)) {
       return(data.frame())
     }
-    
+
     # Convert to data frame and clean URLs
     ids_df <- as.data.frame(ids_data, stringsAsFactors = FALSE)
     ids_df[] <- purrr::map(ids_df, ~ remove_url_from_id(.x))
@@ -853,15 +906,18 @@ oa_process_response <- function(data) {
 
   # Extract journal/venue information
   journal_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
-    if (!"primary_location" %in% names(data) || is.null(data[["primary_location"]]) || 
-        length(data[["primary_location"]]) < i) {
+    if (
+      !"primary_location" %in% names(data) ||
+        is.null(data[["primary_location"]]) ||
+        length(data[["primary_location"]]) < i
+    ) {
       return(NA_character_)
     }
     primary_loc <- data[["primary_location"]][[i]]
     if (is.null(primary_loc) || length(primary_loc) == 0) {
       return(NA_character_)
     }
-    
+
     # Handle different possible structures
     if (is.list(primary_loc) && "source" %in% names(primary_loc)) {
       source_info <- primary_loc[["source"]]
@@ -869,14 +925,17 @@ oa_process_response <- function(data) {
         return(source_info[["display_name"]] %||% NA_character_)
       }
     }
-    
+
     return(NA_character_)
   })
 
   # Extract URLs
   url_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
-    if (!"open_access" %in% names(data) || is.null(data[["open_access"]]) || 
-        length(data[["open_access"]]) < i) {
+    if (
+      !"open_access" %in% names(data) ||
+        is.null(data[["open_access"]]) ||
+        length(data[["open_access"]]) < i
+    ) {
       return(NA_character_)
     }
     oa_data <- data[["open_access"]][[i]]
@@ -888,8 +947,11 @@ oa_process_response <- function(data) {
 
   # Extract open access status
   is_oa_vec <- purrr::map_lgl(seq_len(n_rows), \(i) {
-    if (!"open_access" %in% names(data) || is.null(data[["open_access"]]) || 
-        length(data[["open_access"]]) < i) {
+    if (
+      !"open_access" %in% names(data) ||
+        is.null(data[["open_access"]]) ||
+        length(data[["open_access"]]) < i
+    ) {
       return(FALSE)
     }
     oa_data <- data[["open_access"]][[i]]
@@ -940,38 +1002,45 @@ oa_process_response <- function(data) {
 #'
 #' @return Character vector of reconstructed abstracts, with NA for missing
 #'   or invalid abstract data
-#'   
+#'
 #' @details The function handles errors gracefully and falls back to NA when
 #'   the inverted index cannot be processed (e.g., malformed data, missing
 #'   positions).
-#'   
+#'
 #' @keywords internal
 oa_extract_abstract <- function(abstract_inverted_index) {
   if (is.null(abstract_inverted_index)) {
     return(character(0))
   }
-  
+
   purrr::map_chr(abstract_inverted_index, \(inv_index) {
     if (is.null(inv_index) || length(inv_index) == 0) {
       return(NA_character_)
     }
-    
+
     # Convert inverted index back to text
-    try({
-      # Create word-position pairs
-      word_positions <- purrr::imap_dfr(inv_index, ~ data.frame(
-        word = .y,
-        position = as.integer(.x),
-        stringsAsFactors = FALSE
-      ))
-      
-      # Sort by position and reconstruct text
-      if (nrow(word_positions) > 0) {
-        word_positions <- word_positions[order(word_positions$position), ]
-        paste(word_positions$word, collapse = " ")
-      } else {
-        NA_character_
-      }
-    }, silent = TRUE) %||% NA_character_
+    try(
+      {
+        # Create word-position pairs
+        word_positions <- purrr::imap_dfr(
+          inv_index,
+          ~ data.frame(
+            word = .y,
+            position = as.integer(.x),
+            stringsAsFactors = FALSE
+          )
+        )
+
+        # Sort by position and reconstruct text
+        if (nrow(word_positions) > 0) {
+          word_positions <- word_positions[order(word_positions$position), ]
+          paste(word_positions$word, collapse = " ")
+        } else {
+          NA_character_
+        }
+      },
+      silent = TRUE
+    ) %||%
+      NA_character_
   })
-} 
+}
