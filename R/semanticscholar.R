@@ -72,12 +72,17 @@ get_semanticscholar_articles <- function(
 ) {
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_semanticscholar_articles() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status(
+          "DEBUG: Total get_semanticscholar_articles() time: {elapsed} s"
+        )
+      }
+    },
+    add = TRUE
+  )
 
   # Input validation: ensure only one of ids or query is provided
 
@@ -306,12 +311,17 @@ get_semanticscholar_linked <- function(
 ) {
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_semanticscholar_linked() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status(
+          "DEBUG: Total get_semanticscholar_linked() time: {elapsed} s"
+        )
+      }
+    },
+    add = TRUE
+  )
 
   # Validate and select the link types from allowed values
   links <- match.arg(links, several.ok = TRUE)

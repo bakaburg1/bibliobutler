@@ -55,12 +55,15 @@ get_crossref_articles <- function(
   # -------------------------------------------------------------
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_crossref_articles() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status("DEBUG: Total get_crossref_articles() time: {elapsed} s")
+      }
+    },
+    add = TRUE
+  )
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: get_crossref_articles called")
@@ -361,12 +364,15 @@ get_crossref_linked <- function(
 ) {
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_crossref_linked() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status("DEBUG: Total get_crossref_linked() time: {elapsed} s")
+      }
+    },
+    add = TRUE
+  )
 
   # Check for empty input first
   if (length(ids) == 0) {
@@ -768,7 +774,8 @@ cr_process_work <- function(work) {
     if (is.array(date_parts) && length(date_parts) > 0) {
       # In this case, we're interested in the first element of the first row
       year <- as.character(date_parts[1, 1])
-    } else if (is.list(date_parts) && length(date_parts) > 0) { # Also handle the case where it might be a list
+    } else if (is.list(date_parts) && length(date_parts) > 0) {
+      # Also handle the case where it might be a list
       if (length(date_parts[[1]]) > 0) {
         year <- as.character(date_parts[[1]][[1]])
       }

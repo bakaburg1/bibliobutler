@@ -81,7 +81,6 @@ get_openalex_articles <- function(
   per_page = 200,
   max_results = Inf
 ) {
-  
   # Debug timing setup for dev_mode profiling
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) {
@@ -140,7 +139,10 @@ get_openalex_articles <- function(
       max_results
     )
     if (debug_mode) {
-      fetch_time <- round(as.numeric(Sys.time() - fetch_start, units = "secs"), 2)
+      fetch_time <- round(
+        as.numeric(Sys.time() - fetch_start, units = "secs"),
+        2
+      )
       msg_status("DEBUG: Fetch step (ids/query) took {fetch_time} s")
     }
   } else {
@@ -154,7 +156,10 @@ get_openalex_articles <- function(
       max_results
     )
     if (debug_mode) {
-      fetch_time <- round(as.numeric(Sys.time() - fetch_start, units = "secs"), 2)
+      fetch_time <- round(
+        as.numeric(Sys.time() - fetch_start, units = "secs"),
+        2
+      )
       msg_status("DEBUG: Fetch step (ids/query) took {fetch_time} s")
     }
   }
@@ -184,7 +189,10 @@ get_openalex_articles <- function(
   # DEBUG TIMING SUMMARY
   # -------------------------------------------------------------
   if (debug_mode) {
-    total_time <- round(as.numeric(Sys.time() - overall_start, units = "secs"), 2)
+    total_time <- round(
+      as.numeric(Sys.time() - overall_start, units = "secs"),
+      2
+    )
     msg_status("DEBUG: Total get_openalex_articles() time: {total_time} s")
   }
 
@@ -245,12 +253,15 @@ get_openalex_linked <- function(
 ) {
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_openalex_linked() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status("DEBUG: Total get_openalex_linked() time: {elapsed} s")
+      }
+    },
+    add = TRUE
+  )
 
   links <- match.arg(links, several.ok = TRUE)
 
@@ -1062,7 +1073,9 @@ oa_process_response <- function(data) {
 #' @keywords internal
 oa_extract_abstract <- function(abstract_inverted_index) {
   # Return an empty character vector early if the input is NULL or empty.
-  if (is.null(abstract_inverted_index) || length(abstract_inverted_index) == 0) {
+  if (
+    is.null(abstract_inverted_index) || length(abstract_inverted_index) == 0
+  ) {
     return(character(0))
   }
 
@@ -1092,7 +1105,7 @@ oa_extract_abstract <- function(abstract_inverted_index) {
       # positions, then replicate word labels by the *actual* vector lengths.
       positions <- unlist(inv_index, recursive = TRUE, use.names = FALSE)
       word_lens <- vapply(inv_index, function(x) length(unlist(x)), integer(1))
-      words     <- rep(names(inv_index), word_lens)
+      words <- rep(names(inv_index), word_lens)
 
       # Guard against malformed inputs that could produce length mismatches.
       if (length(positions) == 0 || length(positions) != length(words)) {

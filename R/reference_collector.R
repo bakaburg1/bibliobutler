@@ -110,7 +110,6 @@ convert_article_id <- function(
   results_list <- safe_mirai_map(
     all_ids_df,
     \(group, ...) {
-      # ---- original conversion logic starts ----
       id_type <- unique(group$type)
       batch_ids <- group$id
 
@@ -146,7 +145,7 @@ convert_article_id <- function(
 
       id_col_name <- if (id_type == "doi") "doi" else id_type
 
-      # ------------- identifier extraction -------------
+      # Identifier extraction
       if (".ids" %in% names(api_result)) {
         classify_ids <- function(id_df) {
           vals <- trimws(as.character(unlist(id_df)))

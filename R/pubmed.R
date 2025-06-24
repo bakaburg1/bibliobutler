@@ -359,12 +359,15 @@ get_pubmed_article <- function(
 ) {
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_pubmed_article() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status("DEBUG: Total get_pubmed_article() time: {elapsed} s")
+      }
+    },
+    add = TRUE
+  )
 
   msg_info("Starting PubMed article retrieval...")
 
@@ -630,12 +633,15 @@ get_pubmed_linked <- function(
 ) {
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
-  on.exit({
-    if (debug_mode) {
-      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-      msg_status("DEBUG: Total get_pubmed_linked() time: {elapsed} s")
-    }
-  }, add = TRUE)
+  on.exit(
+    {
+      if (debug_mode) {
+        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+        msg_status("DEBUG: Total get_pubmed_linked() time: {elapsed} s")
+      }
+    },
+    add = TRUE
+  )
 
   # Validate and select the link types
   links <- match.arg(links, several.ok = TRUE)
