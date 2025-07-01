@@ -567,7 +567,8 @@ pm_format_results <- function(response, include_raw = FALSE) {
     # Abstract
     abstract_nodes <- xml2::xml_find_all(article, ".//AbstractText")
     abstract <- if (length(abstract_nodes) > 0) {
-      paste(purrr::map_chr(abstract_nodes, xml2::xml_text), collapse = " ")
+      paste(purrr::map_chr(abstract_nodes, xml2::xml_text), collapse = " ") |>
+        stringr::str_remove_all("<[^>]+>")
     } else NA_character_
 
     # Publication date

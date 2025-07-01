@@ -1037,6 +1037,9 @@ oa_process_response <- function(data) {
     abstract_vec <- rep(NA_character_, n_rows)
   }
 
+  # Strip any potential HTML tags
+  abstract_vec <- stringr::str_remove_all(abstract_vec, "<[^>]+>")
+
   # Build standardized data frame
   result <- data.frame(
     .record_name = NA_character_,

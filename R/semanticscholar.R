@@ -639,7 +639,8 @@ s2_process_response <- function(data) {
           paper_data$paperId %||% ""
         ),
       .title = paper_data$title %||% NA_character_,
-      .abstract = paper_data$abstract %||% NA_character_,
+      .abstract = (paper_data$abstract %||% NA_character_) |>
+        stringr::str_remove_all("<[^>]+>"),
       .authors = authors_str,
       .year = suppressWarnings(as.integer(paper_data$year %||% NA_integer_)),
       .journal = paper_data$venue %||% NA_character_,

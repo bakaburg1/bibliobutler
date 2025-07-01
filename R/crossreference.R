@@ -712,7 +712,7 @@ cr_process_work <- function(work) {
   abstract <- NA_character_
   if (!is.null(work$abstract)) {
     abstract <- as.character(work$abstract) |>
-      stringr::str_remove_all("</?jats:.*?>")
+      stringr::str_remove_all("<[^>]+>")
   }
 
   # Process authors
