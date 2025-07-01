@@ -196,6 +196,7 @@ get_openalex_articles <- function(
     msg_status("DEBUG: Total get_openalex_articles() time: {total_time} s")
   }
 
+  output$.record_name <- generate_record_name(output)
   output
 }
 
@@ -914,10 +915,10 @@ oa_process_response <- function(data) {
         is.null(data[["referenced_works"]]) ||
         length(data[["referenced_works"]]) < i
     ) {
-      return(character(0))
+      return(NA_character_)
     }
     refs <- data[["referenced_works"]][[i]]
-    if (is.null(refs)) return(character(0))
+    if (is.null(refs) || length(refs) == 0) return(NA_character_)
     remove_url_from_id(refs)
   })
 
@@ -927,32 +928,36 @@ oa_process_response <- function(data) {
         is.null(data[["related_works"]]) ||
         length(data[["related_works"]]) < i
     ) {
-      return(character(0))
+      return(NA_character_)
     }
     related <- data[["related_works"]][[i]]
-    if (is.null(related)) return(character(0))
+    if (is.null(related) || length(related) == 0) return(NA_character_)
     remove_url_from_id(related)
   })
 
   # Extract IDs
-  ids_list <- purrr::map(seq_len(n_rows), \(i) {
-    if (
-      !"ids" %in% names(data) ||
-        is.null(data[["ids"]]) ||
-        length(data[["ids"]]) < i
-    ) {
-      return(data.frame())
-    }
-    ids_data <- data[["ids"]][[i]]
-    if (is.null(ids_data)) {
-      return(data.frame())
-    }
+  if (!"ids" %in% names(data) || !is.data.frame(data$ids)) {
+    ids_list <- rep(list(data.frame()), n_rows)
+  } else {
+    ids_df_full <- data$ids
+    # Clean all IDs at once
+    ids_df_full[] <- lapply(ids_df_full, remove_url_from_id)
 
-    # Convert to data frame and clean URLs
-    ids_df <- as.data.frame(ids_data, stringsAsFactors = FALSE)
-    ids_df[] <- purrr::map(ids_df, ~ remove_url_from_id(.x))
-    ids_df
-  })
+    # Split the dataframe into a list of single-row dataframes
+    ids_list <- split(ids_df_full, seq(nrow(ids_df_full))) |>
+      unname()
+    
+    # Ensure consistent naming and column presence
+    ids_list <- purrr::map(ids_list, ~ .x |>
+        dplyr::select(
+            doi = any_of("doi"),
+            pmid = any_of("pmid"),
+            pmcid = any_of("pmcid"),
+            openalex = any_of("openalex")
+        ) |>
+        purrr::discard(~all(is.na(.)))
+    )
+  }
 
   # Extract journal/venue information
   journal_vec <- purrr::map_chr(seq_len(n_rows), \(i) {
@@ -1032,24 +1037,26 @@ oa_process_response <- function(data) {
 
   # Build standardized data frame
   result <- data.frame(
-    .record_name = paste0("openalex_", seq_len(n_rows)),
+    .record_name = NA_character_,
     .paperId = remove_url_from_id(data[["id"]] %||% rep(NA_character_, n_rows)),
     doi = remove_url_from_id(data[["doi"]] %||% rep(NA_character_, n_rows)),
     .url = url_vec,
     .title = data[["title"]] %||% rep(NA_character_, n_rows),
     .abstract = abstract_vec,
     .authors = authors_vec,
-    .year = data[["publication_year"]] %||% rep(NA_integer_, n_rows),
+    .year = suppressWarnings(as.integer(data[["publication_year"]] %||% rep(NA_integer_, n_rows))),
     .journal = journal_vec,
     .pubtype = data[["type"]] %||% rep(NA_character_, n_rows),
     .is_open_access = is_oa_vec,
     .references = I(refs_list),
+    .citations = I(rep(list(NA_character_), n_rows)),
     .related = I(related_list),
     .api = "openalex",
     .ids = I(ids_list),
     stringsAsFactors = FALSE
   )
 
+  result$.record_name <- generate_record_name(result)
   result
 }
 
