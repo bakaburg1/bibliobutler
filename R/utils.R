@@ -117,30 +117,14 @@ get_article_id_type <- function(ids) {
 #' @return A character vector of unique record names.
 #'
 generate_record_name <- function(article_data) {
-  # Extract the first author
-  if (!is.null(unlist(article_data[[".authors"]]))) {
-    # Check if authors were parsed already
-    if (is.character(article_data$.authors[[1]])) {
-      authors <- article_data$.authors |> purrr::map(parse_authors)
-    } else {
-      authors <- article_data$.authors
-    }
-
-    last_name <- authors |>
-      purrr::map_chr(~ .x$last_name[1] %||% "")
-
-    given_name <- authors |>
-      purrr::map_chr(~ .x$first_name[1] %||% "")
-
-    # If the last name is a single character (likely an initial), fall back to
-    # the given name which is more informative (e.g. "Kalaiselvi").
-    first_author <- ifelse(nchar(last_name) <= 1, given_name, last_name)
-
-    # Replace empty strings with NA for consistency
-    first_author[first_author == ""] <- NA_character_
-  } else {
-    first_author <- rep(NA, nrow(article_data))
-  }
+  # Extract the first author's last name from the .authors string
+  first_author <- purrr::map_chr(article_data$.authors, function(author_string) {
+    if (is.na(author_string)) return(NA_character_)
+    # Split by semicolon to get individual authors, take the first one
+    first_author_full <- strsplit(author_string, ";")[[1]][1]
+    # Split by space and take the first part, which should be the last name
+    strsplit(first_author_full, "\\s+")[[1]][1]
+  })
 
   # Extract the first word of the title
   first_word <- article_data$.title |>
@@ -411,58 +395,58 @@ remove_stopwords <- function(x) {
 #'
 #' @return A data frame with parsed author names.
 #'
-parse_authors <- function(
-  authors,
-  to_string = FALSE
-) {
-  authors <- authors |>
-    stringr::str_split("\\s*,\\s*") |>
-    unlist() |>
-    purrr::discard(~ .x %in% "") |>
-    # Fix all capital case names
-    stringr::str_replace_all("(?<=[A-Z])([A-Z])", \(x) tolower(x)) |>
-    purrr::map_chr(\(nm) {
-      ending_initials <- stringr::str_extract_all(nm, "(\\b[A-Z]\\.? ?)+$") |>
-        unlist()
-
-      # Move trailing initials to the front **only** when there are two or
-      # more initials (e.g. "Doe J K" → "J K Doe").  If there is just a single
-      # initial, keep the original order so that "Kalaiselvi K" is not turned
-      # into "K Kalaiselvi".
-      if (length(ending_initials) > 1) {
-        nm <- stringr::str_remove(nm, ending_initials)
-        nm <- paste(ending_initials, nm) |> stringr::str_trim()
-      }
-
-      nm
-    }) |>
-    humaniformat::parse_names() |>
-    # Keep the parsed names verbatim; we no longer strip lowercase letters so
-    # that given names like "Kalaiselvi" are preserved.
-    identity() |>
-    dplyr::mutate(
-      last_name = stringr::str_remove_all(.data$last_name, "\\."),
-      clean_last = stringr::str_remove_all(.data$last_name, "\\."),
-      swap_needed = nchar(clean_last) == 1 & nchar(.data$first_name) > 1,
-      last_name = if_else(swap_needed, .data$first_name, .data$last_name),
-      first_name = if_else(
-        swap_needed,
-        substr(clean_last, 1, 1),
-        .data$first_name
-      ),
-      own_names = paste(
-        .data$first_name,
-        if_else(!is.na(.data$middle_name), .data$middle_name, "")
-      ) |>
-        stringr::str_remove_all("\\s+"),
-      .keep = "none"
-    )
-
-  if (to_string) {
-    authors <- paste(authors$last_name, authors$own_names, collapse = ", ")
+parse_authors <- function(authors, to_string = FALSE) {
+  # Return early for empty/NA input
+  if (length(authors) == 0 || all(is.na(authors))) {
+    return(if (to_string) NA_character_ else character(0))
   }
 
-  authors
+  # Split into individual author strings by comma or semicolon
+  authors_vec <- unlist(stringr::str_split(authors, ",|;")) |>
+    stringr::str_trim() |>
+    # Discard any empty or NA strings that result from splitting
+    purrr::discard(~ is.na(.) || . == "")
+
+  if (length(authors_vec) == 0) {
+    return(if (to_string) NA_character_ else character(0))
+  }
+
+  process_one_author <- function(name) {
+    # Add space between a lowercase and uppercase letter (e.g., "DoeJ" -> "Doe J")
+    name <- stringr::str_replace(name, "([a-z])([A-Z])", "\\1 \\2")
+    # Add space between initials (e.g., "K.I." -> "K. I.")
+    name <- stringr::str_replace_all(name, "([A-Z])\\.([A-Z])", "\\1. \\2")
+
+    parts <- stringr::str_split(name, "\\s+")[[1]]
+
+    # Heuristic: The last part is the last name
+    last_name <- parts[length(parts)]
+    given_parts <- parts[-length(parts)]
+
+    # If the last part is just an initial, the second to last is the last name
+    if (grepl("^[A-Z]\\.?$", last_name) && length(parts) > 1) {
+      last_name <- parts[length(parts) - 1]
+      given_parts <- parts[-c(length(parts) - 1, length(parts))]
+    }
+
+    # Format initials
+    initials <- purrr::map_chr(given_parts, ~ toupper(substr(.x, 1, 1))) |>
+      paste0(".") |>
+      paste(collapse = " ")
+
+    if (nchar(initials) > 0) {
+      return(paste(last_name, initials))
+    } else {
+      return(last_name)
+    }
+  }
+
+  parsed <- purrr::map_chr(authors_vec, process_one_author)
+
+  if (to_string) {
+    return(paste(parsed, collapse = "; "))
+  }
+  parsed
 }
 
 #' Remove URL prefixes from a vector of IDs
@@ -502,9 +486,10 @@ remove_url_from_id <- function(ids) {
 #' @return A list of **mirai** objects when daemons are available; otherwise a
 #'   plain list of results (same length as .x)
 #'
-#' @examples safe_mirai_map(1:3, ~.x * 2) # sequential if no daemons()
-#'   mirai::daemons(2); # start two workers safe_mirai_map(1:3, ~.x * 2)[] #
-#'   parallel, then collect
+#' @examples
+#'   safe_mirai_map(1:3, ~.x * 2) # sequential if no daemons()
+#'   mirai::daemons(2); # start two workers
+#'   safe_mirai_map(1:3, ~.x * 2)[] # parallel, then collect
 safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
   # Logging setup
 

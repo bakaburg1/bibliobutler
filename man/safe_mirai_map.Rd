@@ -26,7 +26,7 @@ A drop-in replacement for mirai::mirai_map() that degrades to sequential
 evaluation with purrr::map() when no daemons have been set.
 }
 \examples{
-safe_mirai_map(1:3, ~.x * 2) # sequential if no daemons()
-  mirai::daemons(2); # start two workers safe_mirai_map(1:3, ~.x * 2)[] #
-  parallel, then collect
+  safe_mirai_map(1:3, ~.x * 2) # sequential if no daemons()
+  mirai::daemons(2); # start two workers
+  safe_mirai_map(1:3, ~.x * 2)[] # parallel, then collect
 }
