@@ -56,29 +56,29 @@
 #' @examples
 #' \dontrun{
 #' # Get article by PMID
-#' article <- get_pubmed_article(ids = "33400058")
+#' article <- get_pubmed_articles(ids = "33400058")
 #'
 #' # Search by title
-#' results <- get_pubmed_article(title = "Machine learning in bioinformatics")
+#' results <- get_pubmed_articles(title = "Machine learning in bioinformatics")
 #'
 #' # Use a complex query
-#' query_results <- get_pubmed_article(
+#' query_results <- get_pubmed_articles(
 #'   query = "cancer AND immunotherapy AND (2020[PDAT]:2023[PDAT])"
 #' )
 #'
 #' # Get all articles about COVID-19 vaccines (potentially thousands)
-#' all_results <- get_pubmed_article(
+#' all_results <- get_pubmed_articles(
 #'   query = "covid-19 vaccine effectiveness"
 #' )
 #'
 #' # Limit to 500 results for a broad query
-#' limited_results <- get_pubmed_article(
+#' limited_results <- get_pubmed_articles(
 #'   query = "cancer treatment",
 #'   max_results = 500
 #' )
 #'
 #' # Use a different batch size and disable parallelization
-#' results <- get_pubmed_article(
+#' results <- get_pubmed_articles(
 #'   query = "machine learning",
 #'   per_page = 500,
 #'   concurrent = FALSE
@@ -86,7 +86,7 @@
 #' }
 #'
 #' @export
-get_pubmed_article <- function(
+get_pubmed_articles <- function(
   ids = NULL,
   title = NULL,
   query = NULL,
@@ -101,7 +101,7 @@ get_pubmed_article <- function(
     {
       if (debug_mode) {
         elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status("DEBUG: Total get_pubmed_article() time: {elapsed} s")
+        msg_status("DEBUG: Total get_pubmed_articles() time: {elapsed} s")
       }
     },
     add = TRUE
@@ -202,6 +202,7 @@ get_pubmed_article <- function(
     all_results <- dplyr::bind_rows(all_results_list)
 
     msg_success("Retrieved {nrow(all_results)} articles")
+    
     return(all_results)
   }
 
@@ -441,7 +442,17 @@ get_pubmed_linked <- function(
   # Make the API request
   response <- pm_make_request(url, params)
 
-  content <- httr2::resp_body_json(response)
+  content <- tryCatch({
+    httr2::resp_body_json(response)
+  }, error = function(e) {
+    msg_warn("Could not parse JSON from PubMed ELink API: {e$message}")
+    NULL # Return NULL to indicate parsing failure
+  })
+
+  if (is.null(content)) {
+    msg_warn("No parseable content received from PubMed ELink API. Returning empty results.")
+    return(results)
+  }
 
   # Process the results - for each input ID...
   for (linkset in content$linksets) {
@@ -591,20 +602,30 @@ pm_format_results <- function(response, include_raw = FALSE) {
 
     # Assemble result
     result <- data.frame(
+      .record_name = NA_character_,
+      .paperId = pmid,
       .api = "pubmed",
       pmid = pmid,
       doi = doi,
-      title = title,
-      abstract = abstract,
-      authors = authors,
-      year = year,
-      journal = journal,
-      pubtype = pubtypes,
+      .title = title,
+      .abstract = abstract,
+      .authors = parse_authors(authors, to_string = TRUE),
+      .year = year,
+      .journal = journal,
+      .pubtype = pubtypes,
+      .url = NA_character_,
+      .is_open_access = NA,
+      .ids = I(list(data.frame(pmid = pmid, doi = doi))),
+      .references = I(list(NA_character_)),
+      .citations = I(list(NA_character_)),
+      .related = I(list(NA_character_)),
       stringsAsFactors = FALSE
     )
 
+    result$.record_name <- generate_record_name(result)
+
     if (include_raw) {
-      result$raw_xml <- list(article)
+      result$raw_xml <- list(xml2::as_xml_document(article))
     }
 
     result
