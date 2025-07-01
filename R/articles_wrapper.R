@@ -55,8 +55,6 @@
 #' get_articles(query = "deep learning", sources = c("crossref", "openalex"))
 #' }
 #'
-#' @importFrom dplyr bind_rows mutate coalesce across where group_by summarise
-#' @importFrom purrr map keep
 #'
 #' @export
 get_articles <- function(
