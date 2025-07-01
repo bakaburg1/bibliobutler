@@ -385,7 +385,7 @@ get_semanticscholar_linked <- function(
     if ("citations" %in% links) {
       # Extract and format citation data
       results$citations <- article_data |>
-        dplyr::select(source_id = "paperId", ".citations") |>
+        dplyr::select(source_id = ".paperId", ".citations") |>
         tidyr::unnest(".citations") |>
         dplyr::select("source_id", linked_id = ".citations")
 
@@ -399,7 +399,7 @@ get_semanticscholar_linked <- function(
     if ("references" %in% links) {
       # Extract and format reference data
       results$references <- article_data |>
-        dplyr::select(source_id = "paperId", ".references") |>
+        dplyr::select(source_id = ".paperId", ".references") |>
         tidyr::unnest(".references") |>
         dplyr::select("source_id", linked_id = ".references")
 
@@ -577,59 +577,83 @@ s2_buld_id <- function(paper_data) {
 #'   sanitized columns at the beginning, identified by a dot prefix.
 #'
 s2_process_response <- function(data) {
+  # Handle nested data if present
   if ("data" %in% names(data)) data <- data$data
 
-  data <- data |>
-    dplyr::mutate(
-      .paperId = col_get("paperId"),
-      .title = col_get("title"),
-      .abstract = col_get("abstract"),
-      across(
-        any_of("authors"),
-        ~ .x |>
-          purrr::map_chr(\(.y) {
-            if (rlang::is_empty(.y)) return(NA_character_)
-            .y[["name"]] |> parse_authors(to_string = TRUE)
-          }),
-        .names = ".authors"
-      ),
-      .year = col_get("year"),
-      .journal = col_get("venue"),
-      .is_open_access = col_get("isOpenAccess"),
-      .url = coalesce(
-        col_get("openAccessPdf", "url"),
-        paste0("https://www.semanticscholar.org/paper/", col_get("paperId"))
-      ),
-      .pubtype = if (!is.null(data[["publicationTypes"]])) {
-        purrr::map_chr(data[["publicationTypes"]], ~ paste(.x, collapse = ", "))
+  # Return early if no data
+  if (is.null(data) || nrow(data) == 0) {
+    return(data.frame())
+  }
+
+  # Process each paper row-by-row to build the final tibble
+  purrr::map(seq_len(nrow(data)), \(i) {
+    paper_data <- data[i, ]
+
+    # Create the .ids data frame for the current paper
+    ids_df <- data.frame(
+      doi = paper_data$externalIds$DOI[[1]] %||% NA_character_,
+      pmid = paper_data$externalIds$PubMed[[1]] %||% NA_character_,
+      pmcid = paper_data$externalIds$PubMedCentral[[1]] %||% NA_character_,
+      arxiv = paper_data$externalIds$ArXiv[[1]] %||% NA_character_,
+      corpusid = paper_data$externalIds$CorpusId[[1]] %||% NA_character_,
+      semanticscholar = paper_data$paperId %||% NA_character_,
+      stringsAsFactors = FALSE
+    )
+
+    # Process authors for the current paper
+    authors_str <- if ("authors" %in% names(paper_data) && !is.null(paper_data$authors[[1]])) {
+      paper_data$authors[[1]]$name |>
+        parse_authors(to_string = TRUE)
+    } else {
+      NA_character_
+    }
+
+    # Process references
+    references_vec <- if ("references" %in% names(paper_data) && !is.null(paper_data$references[[1]])) {
+      s2_buld_id(paper_data$references[[1]])
+    } else {
+      NA_character_
+    }
+
+    # Process citations
+    citations_vec <- if ("citations" %in% names(paper_data) && !is.null(paper_data$citations[[1]])) {
+      s2_buld_id(paper_data$citations[[1]])
+    } else {
+      NA_character_
+    }
+
+    # Construct the final tibble for this row
+    result <- dplyr::tibble(
+      .paperId = paper_data$paperId %||% NA_character_,
+      .url = purrr::pluck(paper_data, "openAccessPdf", 1, "url") %||%
+        paste0("https://www.semanticscholar.org/paper/", paper_data$paperId %||% ""),
+      .title = paper_data$title %||% NA_character_,
+      .abstract = paper_data$abstract %||% NA_character_,
+      .authors = authors_str,
+      .year = suppressWarnings(as.integer(paper_data$year %||% NA_integer_)),
+      .journal = paper_data$venue %||% NA_character_,
+      .pubtype = if ("publicationTypes" %in% names(paper_data) && !is.null(paper_data$publicationTypes[[1]])) {
+        paste(paper_data$publicationTypes[[1]], collapse = ", ")
       } else {
         NA_character_
       },
-      across(
-        any_of(c("references", "citations")),
-        ~ purrr::map(.x, s2_buld_id),
-        .names = ".{col}"
-      ),
-      .api = "semanticscholar",
-      .ids = data.frame(
-        semanticscholar = col_get("paperId"),
-        data$externalIds |>
-          select(
-            doi = any_of("DOI"),
-            pmid = any_of("PubMed"),
-            pmcid = any_of("PubMedCentral"),
-            arxiv = any_of("ArXiv")
-          ) |>
-          purrr::discard(~ all(is.na(.x)))
-      ),
-      .before = everything()
+      .is_open_access = paper_data$isOpenAccess %||% NA,
+      .references = I(list(references_vec)),
+      .citations = I(list(citations_vec)),
+      .related = I(list(NA_character_)), # Not available from this endpoint
+      .ids = I(list(ids_df)),
+      .api = "semantic_scholar",
+      # Add scalar IDs for merging
+      doi = ids_df$doi,
+      pmid = ids_df$pmid,
+      pmcid = ids_df$pmcid
     )
 
-  data |>
-    dplyr::mutate(
-      .record_name = generate_record_name(data),
-      .before = everything()
-    )
+    # Generate record name and select final columns
+    result$.record_name <- generate_record_name(result)
+    dplyr::select(result, .record_name, dplyr::starts_with("."), dplyr::everything())
+  }) |>
+    dplyr::bind_rows()
 }
 
 #' Process a batch of article IDs through the Semantic Scholar API
