@@ -18,6 +18,7 @@ An httr2 request object.
 }
 \description{
 Internal function to create a request with appropriate retry settings for
-PubMed API calls. The function includes exponential backoff for rate limits and server errors.
+PubMed API calls. The function includes exponential backoff for rate limits
+and server errors.
 }
 \keyword{internal}

@@ -9,7 +9,8 @@ process_batch_response(response, include_raw = FALSE)
 \arguments{
 \item{response}{The response object from an API call.}
 
-\item{include_raw}{Logical indicating whether to include raw XML in the result.}
+\item{include_raw}{Logical indicating whether to include raw XML in the
+result.}
 }
 \value{
 A data frame of processed article data.

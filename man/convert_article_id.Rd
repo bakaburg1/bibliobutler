@@ -40,8 +40,10 @@ ids <- c("10.1016/s0140-6736(06)68853-3", "16950365", "PMC5815332")
 dois <- convert_article_id(ids, to = "doi")
 
 # Convert DOIs to PMIDs, keeping original if conversion fails
-dois <- c("10.1016/s0140-6736(06)68853-3", "10.1111/j.1469-0691.2007.01724.x")
-pmids <- convert_article_id(dois, to = "pmid", keep_failed_conversions = TRUE)
+dois <- c("10.1016/s0140-6736(06)68853-3",
+"10.1111/j.1469-0691.2007.01724.x")
+pmids <- convert_article_id(dois,
+to = "pmid", keep_failed_conversions = TRUE)
 }
 
 }

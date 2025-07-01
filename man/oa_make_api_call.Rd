@@ -21,17 +21,18 @@ oa_make_api_call(
 
 \item{body}{Request body (for POST requests)}
 
-\item{as_req}{If TRUE, return httr2 request object instead of performing request}
+\item{as_req}{If TRUE, return httr2 request object instead of performing
+request}
 }
 \value{
-If \code{as_req = FALSE}, returns parsed JSON response. If \code{as_req = TRUE},
-returns httr2 request object for use with \code{httr2::req_perform_parallel()}.
+If \code{as_req = FALSE}, returns parsed JSON response. If \code{as_req = TRUE}, returns httr2 request object for use with
+\code{httr2::req_perform_parallel()}.
 }
 \description{
 This function creates and executes HTTP requests to the OpenAlex API using
 httr2. It includes automatic retry logic, proper user agent configuration,
-and support for API keys. Can return either the response data or the
-request object for use in parallel processing.
+and support for API keys. Can return either the response data or the request
+object for use in parallel processing.
 }
 \details{
 The function automatically includes:
