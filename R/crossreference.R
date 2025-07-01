@@ -82,7 +82,8 @@ get_crossref_articles <- function(
   # Set empty filters if NULL
   if (is.null(filters)) filters <- list()
 
-  # Process year filter into Crossref filter parameters (from-pub-date and until-pub-date)
+  # Process year filter into Crossref filter parameters (from-pub-date and
+  # until-pub-date)
   if (!is.null(year_filter)) {
     yr_list <- cr_parse_year_filter(year_filter)
     # Merge year filter into filters list (overriding any year filters supplied)
@@ -281,7 +282,7 @@ get_crossref_articles <- function(
 
   first_page_results <- cr_process_response(resp)
   results_pages[[current_page]] <- first_page_results
-  results_count <- results_count + nrow(first_page_results)
+  results_count <- results_count + length(resp$message$items)
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status(
@@ -299,6 +300,13 @@ get_crossref_articles <- function(
     current_page <- current_page + 1
     query_params$cursor <- resp$message$`next-cursor`
 
+    # Dynamically adjust rows to fetch, ensuring we do not exceed max_results
+    remaining_results <- max_results - results_count
+    query_params$rows <- min(per_page, 1000L, remaining_results)
+
+    # If no more results are needed, break the loop
+    if (query_params$rows <= 0) break
+
     msg_status("Fetching page {current_page} with cursor")
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
@@ -310,7 +318,9 @@ get_crossref_articles <- function(
     # Process page results
     page_results <- cr_process_response(resp)
     results_pages[[current_page]] <- page_results
-    results_count <- results_count + nrow(page_results)
+    # Increment count by items returned from API, not items successfully
+    # processed, to prevent infinite loops if processing fails.
+    results_count <- results_count + length(resp$message$items)
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
       msg_status(
@@ -690,164 +700,71 @@ cr_process_response <- function(resp) {
 #'
 #' @return A one-row data frame with standardized columns.
 cr_process_work <- function(work) {
-  # Extract basic metadata
-  paperId <- NA_character_
-
-  # Safely extract DOI - check if work is atomic first
-  if (is.atomic(work)) {
-    # If work is atomic, we can't extract fields from it
-    work <- list()
-  }
-
-  # Now extract the DOI safely
-  if (!is.null(work$DOI)) {
-    if (is.character(work$DOI)) {
-      paperId <- tolower(work$DOI)
-    } else {
-      paperId <- tolower(as.character(work$DOI))
-    }
-  }
+  # Safely extract DOI
+  paperId <- tolower(work$DOI %||% NA_character_)
 
   # Title handling
   title <- NA_character_
-  if (!is.null(work$title)) {
-    if (is.character(work$title) && length(work$title) > 0) {
-      title <- work$title[1]
-    } else if (is.list(work$title) && length(work$title) > 0) {
-      title <- as.character(work$title[[1]])
-    }
+  if (!is.null(work$title) && length(work$title) > 0) {
+    title <- work$title[[1]]
   }
 
   # Abstract handling
   abstract <- NA_character_
-  if (!is.null(work$abstract) && !is.na(work$abstract)) {
+  if (!is.null(work$abstract)) {
     abstract <- as.character(work$abstract) |>
       stringr::str_remove_all("</?jats:.*?>")
   }
 
-  # Process authors – Crossref may return `author` as a data frame (when JSON
-  # is simplified) or as a list of lists. Handle both.
+  # Process authors
   authors <- NA_character_
   if (!is.null(work$author)) {
-    if (is.data.frame(work$author) && nrow(work$author) > 0) {
-      authors <- parse_authors(
-        paste(work$author$given, work$author$family),
-        to_string = TRUE
-      )
-    } else if (is.list(work$author) && length(work$author) > 0) {
-      # Each element is a list that should contain `given` and `family`.
-      names_vec <- purrr::map_chr(work$author, function(a) {
-        given <- a$given %||% ""
-        family <- a$family %||% ""
-        paste(given, family)
-      })
-      authors <- parse_authors(names_vec, to_string = TRUE)
-    }
+    # Each element is a list that should contain `given` and `family`.
+    names_vec <- purrr::map_chr(work$author, function(a) {
+      paste(a$given %||% "", a$family %||% "")
+    })
+    authors <- parse_authors(names_vec, to_string = TRUE)
   }
 
-  # Extract year from the date fields with fallbacks
-  # The Crossref API can provide date information in various fields:
-  # 1. issued: Publication issue date (prioritized for standard citation format)
-  # 2. published-print: Print publication date
-  # 3. published: General publication date
-  # 4. published-online: Online publication date
-  # We check them in order of preference to extract the year
-  date_parts <- NULL
-
-  if (!is.null(work$`issued`)) {
-    date_parts <- work$`issued`$`date-parts`
-  } else if (!is.null(work$`published-print`)) {
-    date_parts <- work$`published-print`$`date-parts`
-  } else if (!is.null(work$`published`)) {
-    date_parts <- work$`published`$`date-parts`
-  } else if (!is.null(work$`published-online`)) {
-    date_parts <- work$`published-online`$`date-parts`
-  }
-
-  # Improved date parts extraction
-  year <- NA_character_
-
-  # Handle both array and list representations of date parts
-  if (!is.null(date_parts)) {
-    # Handle case where date_parts is an array
-    if (is.array(date_parts) && length(date_parts) > 0) {
-      # In this case, we're interested in the first element of the first row
-      year <- as.character(date_parts[1, 1])
-    } else if (is.list(date_parts) && length(date_parts) > 0) {
-      # Also handle the case where it might be a list
-      if (length(date_parts[[1]]) > 0) {
-        year <- as.character(date_parts[[1]][[1]])
-      }
-    }
+  # Extract year
+  year <- NA_integer_
+  date_parts <- work$issued$`date-parts`[[1]]
+  if (!is.null(date_parts) && length(date_parts) > 0) {
+    year <- suppressWarnings(as.integer(date_parts[[1]]))
   }
 
   # Extract journal/container title
   journal <- NA_character_
-  if (!is.null(work$`container-title`)) {
-    if (
-      is.character(work$`container-title`) && length(work$`container-title`) > 0
-    ) {
-      journal <- work$`container-title`[1]
-    } else if (
-      is.list(work$`container-title`) && length(work$`container-title`) > 0
-    ) {
-      journal <- as.character(work$`container-title`[[1]])
-    }
+  if (!is.null(work$`container-title`) && length(work$`container-title`) > 0) {
+    journal <- work$`container-title`[[1]]
   }
 
   # Extract publication type
-  pubtype <- NA_character_
-  if (!is.null(work$type)) {
-    pubtype <- as.character(work$type)
+  pubtype <- work$type %||% NA_character_
+
+  # Extract URL
+  url <- work$URL %||% NA_character_
+
+  # Open access is a logical NA for consistency
+  is_open_access <- NA
+
+  # Process references
+  references <- if (!is.null(work$reference)) {
+    purrr::map_chr(work$reference, "DOI", .default = NA_character_)
+  } else {
+    NA_character_
+  }
+  references <- references[!is.na(references)]
+  if (length(references) == 0) {
+    references <- NA_character_
   }
 
-  # Extract URL. Prefer `URL` field if present, otherwise fall back to the
-  # resource-primary path used previously.
-  url <- NA_character_
-  if (!is.null(work$URL)) {
-    url <- as.character(work$URL)
-  } else if (
-    !is.null(work$resource) &&
-      !is.null(work$resource$primary) &&
-      !is.null(work$resource$primary$URL)
-  ) {
-    url <- as.character(work$resource$primary$URL)
-  }
+  # Create ID dataframe with consistent lowercase 'doi'
+  ids_df <- data.frame(doi = paperId, stringsAsFactors = FALSE)
 
-  # Not easy to check
-  is_open_access <- NA_character_
-
-  # Process references - work$reference might be a data.frame or list
-  refs <- data.frame(DOI = character(0))
-  if (!is.null(work$reference)) {
-    if (is.data.frame(work$reference)) {
-      if ("DOI" %in% names(work$reference)) {
-        refs <- work$reference |>
-          dplyr::filter(!is.na(.data$DOI)) |>
-          dplyr::select("DOI")
-      }
-    } else if (is.list(work$reference)) {
-      # Try to extract DOIs from list structure
-      dois <- character(0)
-      for (ref in work$reference) {
-        if (is.list(ref) && "DOI" %in% names(ref) && !is.null(ref$DOI)) {
-          dois <- c(dois, as.character(ref$DOI))
-        }
-      }
-      if (length(dois) > 0) {
-        refs <- data.frame(DOI = dois)
-      }
-    }
-  }
-
-  # Create ID dataframe
-  ids_df <- data.frame(DOI = paperId, stringsAsFactors = FALSE)
-
-  # Create standardized output with dotted fields
-  result <- data.frame(
-    .record_name = NA_character_,
+  # Create standardized output tibble
+  result <- dplyr::tibble(
     .paperId = paperId,
-    doi = paperId,
     .url = url,
     .title = title,
     .abstract = abstract,
@@ -856,20 +773,16 @@ cr_process_work <- function(work) {
     .journal = journal,
     .pubtype = pubtype,
     .is_open_access = is_open_access,
-    # Placeholder empty list-columns for citations and related works to maintain
-    # expected output structure. These will be consistently empty for Crossref,
-    # as the API does not expose this information in a single work response.
-    .citations = I(list(character(0))),
-    .related = I(list(character(0))),
-    .references = I(list(refs$DOI |> tolower())),
+    .references = I(list(references)),
+    .citations = I(list(NA_character_)),
+    .related = I(list(NA_character_)),
+    .ids = I(list(ids_df)),
     .api = "crossref",
-    # Keep DOI column upper-case inside .ids to match existing tests
-    .ids = I(list(data.frame(DOI = paperId, stringsAsFactors = FALSE)))
+    # Add scalar id for merging
+    doi = paperId
   )
 
-  # Generate record name using the utility function
+  # Generate record name and reorder
   result$.record_name <- generate_record_name(result)
-
-  result |>
-    dplyr::select(".record_name", dplyr::starts_with("."), dplyr::everything())
+  dplyr::select(result, .record_name, dplyr::everything())
 }
