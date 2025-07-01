@@ -52,7 +52,7 @@ test_that("get_crossref_articles() returns expected structure for a query", {
 
   # Only test years if there are non-NA values
   if (length(non_na_years) > 0) {
-    expect_equal(non_na_years, rep("2020", length(non_na_years)))
+    expect_equal(non_na_years, rep(2020L, length(non_na_years)))
   }
 
   # Check .ids is a list column with data frames
@@ -63,7 +63,7 @@ test_that("get_crossref_articles() returns expected structure for a query", {
   expect_s3_class(first_ids, "data.frame")
 
   # Check the names of columns in first ids data frame
-  expect_named(first_ids, "DOI", ignore.order = TRUE)
+  expect_named(first_ids, "doi", ignore.order = TRUE)
 })
 
 test_that("get_crossref_articles() can fetch articles by ID", {
@@ -110,7 +110,7 @@ test_that("get_crossref_articles() can fetch articles by ID", {
   expect_s3_class(first_ids, "data.frame")
 
   # Check the names of columns in first ids data frame
-  expect_named(first_ids, "DOI", ignore.order = TRUE)
+  expect_named(first_ids, "doi", ignore.order = TRUE)
 })
 
 test_that("get_crossref_linked() returns expected structure", {

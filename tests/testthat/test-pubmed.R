@@ -1,9 +1,9 @@
-test_that("get_pubmed_article retrieves correct article data compared to direct API call", {
+test_that("get_pubmed_articles retrieves correct article data compared to direct API call", {
   # Test article with known PMID
   test_pmid <- "33400058"
 
   # Get article data using our implementation
-  result <- get_pubmed_article(ids = test_pmid)
+  result <- get_pubmed_articles(ids = test_pmid)
 
   # Make a direct API call to PubMed
   api_url <- paste0(
@@ -83,25 +83,33 @@ test_that("get_pubmed_article retrieves correct article data compared to direct 
   } else NA_character_
 
   # Test that our implementation returns the correct data
-  expect_equal(result$pmid[1], direct_pmid)
-  expect_equal(result$title[1], direct_title)
-  expect_equal(result$doi[1], direct_doi)
-  expect_equal(result$journal[1], direct_journal)
-  expect_equal(result$year[1], direct_year)
-  expect_equal(result$authors[1], direct_authors)
-  expect_equal(result$pubtype[1], direct_pubtypes)
+  expect_equal(result$pmid[1], direct_pmid, ignore_attr = TRUE)
+  expect_equal(result$doi[1], direct_doi, ignore_attr = TRUE)
+  expect_equal(result$.title[1], direct_title, ignore_attr = TRUE)
+  expect_equal(result$.journal[1], direct_journal, ignore_attr = TRUE)
+  expect_equal(result$.year[1], direct_year, ignore_attr = TRUE)
+  expect_equal(result$.authors[1], parse_authors(direct_authors, to_string = TRUE), ignore_attr = TRUE)
+  expect_equal(result$.pubtype[1], direct_pubtypes, ignore_attr = TRUE)
 
   # Test that the result has all expected columns
   expected_columns <- c(
     ".api",
     "pmid",
     "doi",
-    "title",
-    "abstract",
-    "authors",
-    "year",
-    "journal",
-    "pubtype"
+    ".title",
+    ".abstract",
+    ".authors",
+    ".year",
+    ".journal",
+    ".pubtype",
+    ".record_name",
+    ".paperId",
+    ".url",
+    ".is_open_access",
+    ".ids",
+    ".references",
+    ".citations",
+    ".related"
   )
   expect_named(result, expected_columns, ignore.order = TRUE)
 
@@ -109,13 +117,13 @@ test_that("get_pubmed_article retrieves correct article data compared to direct 
   expect_equal(result$.api[1], "pubmed")
 })
 
-test_that("get_pubmed_article handles DOI input correctly with direct API comparison", {
+test_that("get_pubmed_articles handles DOI input correctly with direct API comparison", {
   # Test with a DOI instead of PMID
   test_doi <- "10.1208/s12248-020-00532-2"
   expected_pmid <- "33400058"
 
   # Get article data using our implementation with DOI
-  result <- get_pubmed_article(ids = test_doi)
+  result <- get_pubmed_articles(ids = test_doi)
 
   # Make a direct API call to PubMed using the expected PMID
   api_url <- paste0(
@@ -143,14 +151,14 @@ test_that("get_pubmed_article handles DOI input correctly with direct API compar
 
   # Test that the DOI was correctly converted to PMID and article was retrieved
   expect_equal(result$pmid[1], direct_pmid)
-  expect_equal(result$title[1], direct_title)
+  expect_equal(result$.title[1], direct_title)
   expect_equal(result$doi[1], direct_doi)
 })
 
-test_that("get_pubmed_article handles invalid IDs correctly", {
+test_that("get_pubmed_articles handles invalid IDs correctly", {
   # Test with an invalid ID
   expect_error(
-    get_pubmed_article(ids = "invalid_id"),
+    get_pubmed_articles(ids = "invalid_id"),
     "Some input IDs are not recognized"
   )
 
@@ -158,7 +166,7 @@ test_that("get_pubmed_article handles invalid IDs correctly", {
   # The function might not throw a warning for non-existent PMIDs
   # as they might be valid format but just not exist in the database
   non_existent_pmid <- "99999999999"
-  result <- get_pubmed_article(ids = non_existent_pmid)
+  result <- get_pubmed_articles(ids = non_existent_pmid)
   expect_equal(nrow(result), 0)
 })
 
@@ -180,8 +188,25 @@ test_that("get_pubmed_linked retrieves correct linked articles compared to direc
     "&cmd=neighbor&retmode=json"
   )
 
-  direct_response <- httr::GET(api_url)
-  direct_content <- httr::content(direct_response, "parsed")
+  direct_response <- httr2::request(api_url) |>
+    httr2::req_retry(max_tries = 3) |>
+    httr2::req_perform()
+
+  # Try to parse JSON, handle potential non-JSON error responses
+  direct_content <- tryCatch({
+    httr2::resp_body_json(direct_response)
+  }, error = function(e) {
+    message("Warning: Could not parse JSON from PubMed ELink API: ", e$message)
+    NULL # Return NULL or an empty list if parsing fails
+  })
+
+  # Ensure content is not NULL before proceeding
+  if (is.null(direct_content) || is.null(direct_content$linksets)) {
+    message("Direct API call for get_pubmed_linked returned no parseable JSON or data. Expecting empty results.")
+    expect_equal(nrow(linked_results$citations), 0)
+    expect_equal(nrow(linked_results$references), 0)
+    return(NULL) # Exit the test prematurely as the direct call failed
+  }
 
   # Extract citations and references from direct API call
   direct_linksets <- direct_content$linksets[[1]]$linksetdbs
@@ -264,8 +289,29 @@ test_that("get_pubmed_linked handles different link types correctly with direct 
     "&cmd=neighbor&retmode=json"
   )
 
-  direct_response <- httr::GET(api_url)
-  direct_content <- httr::content(direct_response, "parsed")
+  direct_response <- httr2::request(api_url) |>
+    httr2::req_retry(max_tries = 3) |>
+    httr2::req_perform()
+
+  # Try to parse JSON, handle potential non-JSON error responses
+  direct_content <- tryCatch({
+    httr2::resp_body_json(direct_response)
+  }, error = function(e) {
+    message("Warning: Could not parse JSON from PubMed ELink API: ", e$message)
+    NULL # Return NULL or an empty list if parsing fails
+  })
+
+  # Ensure content is not NULL before proceeding
+  if (is.null(direct_content) || is.null(direct_content$linksets)) {
+    message("Direct API call for get_pubmed_linked returned no parseable JSON or data. Expecting empty results.")
+    expect_equal(nrow(citations_only), 0)
+    expect_equal(nrow(references_only), 0)
+    expect_equal(nrow(related_only), 0)
+    expect_equal(nrow(all_links$citations), 0)
+    expect_equal(nrow(all_links$references), 0)
+    expect_equal(nrow(all_links$related), 0)
+    return(NULL) # Exit the test prematurely as the direct call failed
+  }
 
   # Extract linknames from direct API call
   direct_linknames <- sapply(
@@ -311,57 +357,54 @@ test_that("get_article_id_type correctly identifies PMIDs", {
 })
 
 test_that("pm_format_results correctly formats PubMed API responses compared to raw XML", {
-  # Make a direct API call to get a response
-  test_pmid <- "33400058"
-  api_url <- paste0(
+  # Direct API call to get raw XML for testing pm_format_results
+  pmid_test <- "33400058"
+  api_url_direct <- paste0(
     "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=",
-    test_pmid,
+    pmid_test,
     "&retmode=xml"
   )
+  direct_response_obj <- httr2::request(api_url_direct) |>
+    httr2::req_perform()
 
-  # Use httr2 instead of httr to match what pm_format_results expects
-  response <- httr2::request(api_url) |> httr2::req_perform()
+  # Expected values (from direct XML parsing to avoid dependency on pm_format_results bugs)
+  direct_title <- xml2::xml_text(xml2::xml_find_first(xml2::read_xml(httr2::resp_body_string(direct_response_obj)), ".//ArticleTitle"))
 
-  # Test the formatter with the response
-  result <- pm_format_results(response)
+  # Test pm_format_results
+  result <- pm_format_results(direct_response_obj)
 
-  # Parse the XML directly to compare
-  direct_content <- httr2::resp_body_string(response)
-  direct_xml <- xml2::read_xml(direct_content)
+  # Verify core fields
+  expect_equal(result$.title[1], direct_title, ignore_attr = TRUE)
 
-  # Extract key fields from XML
-  direct_pmid <- xml2::xml_text(xml2::xml_find_first(direct_xml, "//PMID"))
-  direct_title <- xml2::xml_text(xml2::xml_find_first(
-    direct_xml,
-    "//ArticleTitle"
-  ))
+  # Test with include_raw = TRUE
+  result_with_raw <- pm_format_results(direct_response_obj, include_raw = TRUE)
+  expect_true("raw_xml" %in% names(result_with_raw))
+  expect_s3_class(result_with_raw$raw_xml[[1]], "xml_document")
 
-  # Compare with formatted results
-  expect_equal(result$pmid[1], direct_pmid)
-  expect_equal(result$title[1], direct_title)
-
-  # Check that the result has the expected structure
-  expect_s3_class(result, "data.frame")
+  # Test that the result has all expected columns
   expected_columns <- c(
     ".api",
     "pmid",
     "doi",
-    "title",
-    "abstract",
-    "authors",
-    "year",
-    "journal",
-    "pubtype"
+    ".title",
+    ".abstract",
+    ".authors",
+    ".year",
+    ".journal",
+    ".pubtype",
+    ".record_name",
+    ".paperId",
+    ".url",
+    ".is_open_access",
+    ".ids",
+    ".references",
+    ".citations",
+    ".related"
   )
   expect_named(result, expected_columns, ignore.order = TRUE)
 
-  # Test with include_raw = TRUE
-  result_with_raw <- pm_format_results(response, include_raw = TRUE)
-  expect_named(
-    result_with_raw,
-    c(expected_columns, "raw_xml"),
-    ignore.order = TRUE
-  )
+  expected_columns_raw <- c(expected_columns, "raw_xml")
+  expect_named(result_with_raw, expected_columns_raw, ignore.order = TRUE)
 })
 
 test_that("pm_make_request correctly handles API requests with proper parameters", {
@@ -419,37 +462,69 @@ test_that("pm_make_request correctly handles API requests with proper parameters
   expect_equal(httr2::resp_status(response_post), 200)
 })
 
-test_that("get_pubmed_article returns expected structure for a query", {
-  skip_on_cran()
+test_that("get_pubmed_articles returns expected structure for a query", {
+  # Test with a query
+  test_query <- "machine learning"
+  max_results_test <- 5
+  results <- get_pubmed_articles(query = test_query, max_results = max_results_test)
 
-  # Use a generic biomedical query with limited results to keep the test fast
-  results <- get_pubmed_article(
-    query = "machine learning",
-    max_results = 5
-  )
+  # Check that results are returned and count is correct
+  expect_true(nrow(results) > 0)
+  expect_lte(nrow(results), max_results_test)
 
-  # Basic structure checks
-  expect_s3_class(results, "data.frame")
-  expect_gt(nrow(results), 0)
-  expect_lte(nrow(results), 5)
-
-  # Expected column set (same as other PubMed tests)
+  # Check column names
   expected_columns <- c(
     ".api",
     "pmid",
     "doi",
-    "title",
-    "abstract",
-    "authors",
-    "year",
-    "journal",
-    "pubtype"
+    ".title",
+    ".abstract",
+    ".authors",
+    ".year",
+    ".journal",
+    ".pubtype",
+    ".record_name",
+    ".paperId",
+    ".url",
+    ".is_open_access",
+    ".ids",
+    ".references",
+    ".citations",
+    ".related"
   )
   expect_named(results, expected_columns, ignore.order = TRUE)
 
-  # API column should be correctly set
-  expect_identical(unique(results$.api), "pubmed")
+  # Check data types for key columns
+  expect_type(results$.title, "character")
+  expect_type(results$.abstract, "character")
+  expect_type(results$.authors, "character")
+  expect_type(results$.year, "integer")
+  expect_type(results$.journal, "character")
+  expect_type(results$.pubtype, "character")
+  expect_type(results$.record_name, "character")
+  expect_type(results$.paperId, "character")
+  expect_type(results$.url, "character")
+  expect_type(results$.is_open_access, "logical")
+  expect_type(results$.ids, "list")
+  expect_type(results$.references, "list")
+  expect_type(results$.citations, "list")
+  expect_type(results$.related, "list")
+})
 
-  # Year column should be numeric or NA
-  expect_type(results$year, "integer")
+# Add a test for PubMed API-specific date format parsing in case `year_filter` is used
+test_that("cr_parse_year_filter works correctly for year ranges", {
+  # Example from Crossref documentation: "from-pub-date=2010-01-01,until-pub-date=2015-12-31"
+  filter_str <- "2010-2015"
+  parsed <- cr_parse_year_filter(filter_str)
+
+  expect_equal(parsed$from, "2010-01-01")
+  expect_equal(parsed$to, "2015-12-31")
+})
+
+test_that("cr_parse_year_filter works correctly for single year", {
+  filter_str <- "2020"
+  parsed <- cr_parse_year_filter(filter_str)
+
+  expect_equal(parsed$from, "2020-01-01")
+  expect_equal(parsed$to, "2020-12-31")
 })

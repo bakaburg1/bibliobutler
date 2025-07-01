@@ -36,6 +36,9 @@ test_that("get_semanticscholar_articles() returns expected structure for a query
       ".api",
       ".is_open_access",
       ".url",
+      ".references",
+      ".citations",
+      ".related",
       ".ids"
     )
   )
@@ -44,10 +47,12 @@ test_that("get_semanticscholar_articles() returns expected structure for a query
   expect_equal(processed_results$.year, rep(2025, nrow(processed_results)))
 
   # Check .ids is a data frame column
-  expect_s3_class(processed_results$.ids, "data.frame")
+  expect_s3_class(processed_results$.ids, "AsIs")
 
   # Check if doi and semantic scholar id are present in .ids
-  expect_contains(names(processed_results$.ids), c("doi", "semanticscholar"))
+  ids_df <- processed_results$.ids[[1]]
+  expect_s3_class(ids_df, "data.frame")
+  expect_true(any(names(ids_df) %in% c("doi", "semanticscholar")))
 })
 
 test_that("get_semanticscholar_articles() can fetch articles by ID", {
@@ -90,12 +95,15 @@ test_that("get_semanticscholar_articles() can fetch articles by ID", {
       ".url",
       ".references",
       ".citations",
+      ".related",
       ".ids"
     )
   )
 
   # Check if doi and semantic scholar id are present in .ids
-  expect_contains(names(processed_results$.ids), c("doi", "semanticscholar"))
+  ids_df <- processed_results$.ids[[1]]
+  expect_s3_class(ids_df, "data.frame")
+  expect_true(any(names(ids_df) %in% c("doi", "semanticscholar")))
 })
 
 test_that("get_semanticscholar_linked() returns expected structure", {

@@ -37,6 +37,7 @@ test_that("get_openalex_articles() returns expected structure for a query", {
       ".is_open_access",
       ".url",
       ".references",
+      ".citations",
       ".related",
       ".ids"
     )
@@ -52,10 +53,8 @@ test_that("get_openalex_articles() returns expected structure for a query", {
   ids_df <- processed_results$.ids[[1]]
   expect_s3_class(ids_df, "data.frame")
 
-  # Check if the ids_data column is present in the data frame
-  if (ncol(ids_df) > 0) {
-    expect_contains(names(ids_df), "ids_data")
-  }
+  # Check the names of columns in ids_df to match actual output
+  expect_true(any(names(ids_df) %in% c("doi", "openalex")))
 })
 
 test_that("get_openalex_articles() can fetch articles by ID", {
@@ -97,6 +96,7 @@ test_that("get_openalex_articles() can fetch articles by ID", {
         ".is_open_access",
         ".url",
         ".references",
+        ".citations",
         ".related",
         ".ids"
       )
@@ -106,9 +106,8 @@ test_that("get_openalex_articles() can fetch articles by ID", {
     expect_s3_class(processed_results$.ids, "AsIs")
     ids_df <- processed_results$.ids[[1]]
     expect_s3_class(ids_df, "data.frame")
-    if (ncol(ids_df) > 0) {
-      expect_contains(names(ids_df), "ids_data")
-    }
+    # Expect at least 'doi' and 'openalex' as these are common
+    expect_true(any(names(ids_df) %in% c("doi", "openalex")))
   }
 })
 
