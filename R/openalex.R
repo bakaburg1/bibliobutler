@@ -946,16 +946,18 @@ oa_process_response <- function(data) {
     # Split the dataframe into a list of single-row dataframes
     ids_list <- split(ids_df_full, seq(nrow(ids_df_full))) |>
       unname()
-    
+
     # Ensure consistent naming and column presence
-    ids_list <- purrr::map(ids_list, ~ .x |>
+    ids_list <- purrr::map(
+      ids_list,
+      ~ .x |>
         dplyr::select(
-            doi = any_of("doi"),
-            pmid = any_of("pmid"),
-            pmcid = any_of("pmcid"),
-            openalex = any_of("openalex")
+          doi = any_of("doi"),
+          pmid = any_of("pmid"),
+          pmcid = any_of("pmcid"),
+          openalex = any_of("openalex")
         ) |>
-        purrr::discard(~all(is.na(.)))
+        purrr::discard(~ all(is.na(.)))
     )
   }
 
@@ -1044,7 +1046,9 @@ oa_process_response <- function(data) {
     .title = data[["title"]] %||% rep(NA_character_, n_rows),
     .abstract = abstract_vec,
     .authors = authors_vec,
-    .year = suppressWarnings(as.integer(data[["publication_year"]] %||% rep(NA_integer_, n_rows))),
+    .year = suppressWarnings(as.integer(
+      data[["publication_year"]] %||% rep(NA_integer_, n_rows)
+    )),
     .journal = journal_vec,
     .pubtype = data[["type"]] %||% rep(NA_character_, n_rows),
     .is_open_access = is_oa_vec,

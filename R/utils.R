@@ -118,13 +118,16 @@ get_article_id_type <- function(ids) {
 #'
 generate_record_name <- function(article_data) {
   # Extract the first author's last name from the .authors string
-  first_author <- purrr::map_chr(article_data$.authors, function(author_string) {
-    if (is.na(author_string)) return(NA_character_)
-    # Split by semicolon to get individual authors, take the first one
-    first_author_full <- strsplit(author_string, ";")[[1]][1]
-    # Split by space and take the first part, which should be the last name
-    strsplit(first_author_full, "\\s+")[[1]][1]
-  })
+  first_author <- purrr::map_chr(
+    article_data$.authors,
+    function(author_string) {
+      if (is.na(author_string)) return(NA_character_)
+      # Split by semicolon to get individual authors, take the first one
+      first_author_full <- strsplit(author_string, ";")[[1]][1]
+      # Split by space and take the first part, which should be the last name
+      strsplit(first_author_full, "\\s+")[[1]][1]
+    }
+  )
 
   # Extract the first word of the title
   first_word <- article_data$.title |>

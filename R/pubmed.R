@@ -202,7 +202,7 @@ get_pubmed_articles <- function(
     all_results <- dplyr::bind_rows(all_results_list)
 
     msg_success("Retrieved {nrow(all_results)} articles")
-    
+
     return(all_results)
   }
 
@@ -442,15 +442,20 @@ get_pubmed_linked <- function(
   # Make the API request
   response <- pm_make_request(url, params)
 
-  content <- tryCatch({
-    httr2::resp_body_json(response)
-  }, error = function(e) {
-    msg_warn("Could not parse JSON from PubMed ELink API: {e$message}")
-    NULL # Return NULL to indicate parsing failure
-  })
+  content <- tryCatch(
+    {
+      httr2::resp_body_json(response)
+    },
+    error = function(e) {
+      msg_warn("Could not parse JSON from PubMed ELink API: {e$message}")
+      NULL # Return NULL to indicate parsing failure
+    }
+  )
 
   if (is.null(content)) {
-    msg_warn("No parseable content received from PubMed ELink API. Returning empty results.")
+    msg_warn(
+      "No parseable content received from PubMed ELink API. Returning empty results."
+    )
     return(results)
   }
 

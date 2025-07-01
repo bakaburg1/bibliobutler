@@ -601,7 +601,9 @@ s2_process_response <- function(data) {
     )
 
     # Process authors for the current paper
-    authors_str <- if ("authors" %in% names(paper_data) && !is.null(paper_data$authors[[1]])) {
+    authors_str <- if (
+      "authors" %in% names(paper_data) && !is.null(paper_data$authors[[1]])
+    ) {
       paper_data$authors[[1]]$name |>
         parse_authors(to_string = TRUE)
     } else {
@@ -609,14 +611,20 @@ s2_process_response <- function(data) {
     }
 
     # Process references
-    references_vec <- if ("references" %in% names(paper_data) && !is.null(paper_data$references[[1]])) {
+    references_vec <- if (
+      "references" %in%
+        names(paper_data) &&
+        !is.null(paper_data$references[[1]])
+    ) {
       s2_buld_id(paper_data$references[[1]])
     } else {
       NA_character_
     }
 
     # Process citations
-    citations_vec <- if ("citations" %in% names(paper_data) && !is.null(paper_data$citations[[1]])) {
+    citations_vec <- if (
+      "citations" %in% names(paper_data) && !is.null(paper_data$citations[[1]])
+    ) {
       s2_buld_id(paper_data$citations[[1]])
     } else {
       NA_character_
@@ -626,13 +634,20 @@ s2_process_response <- function(data) {
     result <- dplyr::tibble(
       .paperId = paper_data$paperId %||% NA_character_,
       .url = purrr::pluck(paper_data, "openAccessPdf", 1, "url") %||%
-        paste0("https://www.semanticscholar.org/paper/", paper_data$paperId %||% ""),
+        paste0(
+          "https://www.semanticscholar.org/paper/",
+          paper_data$paperId %||% ""
+        ),
       .title = paper_data$title %||% NA_character_,
       .abstract = paper_data$abstract %||% NA_character_,
       .authors = authors_str,
       .year = suppressWarnings(as.integer(paper_data$year %||% NA_integer_)),
       .journal = paper_data$venue %||% NA_character_,
-      .pubtype = if ("publicationTypes" %in% names(paper_data) && !is.null(paper_data$publicationTypes[[1]])) {
+      .pubtype = if (
+        "publicationTypes" %in%
+          names(paper_data) &&
+          !is.null(paper_data$publicationTypes[[1]])
+      ) {
         paste(paper_data$publicationTypes[[1]], collapse = ", ")
       } else {
         NA_character_
@@ -651,7 +666,12 @@ s2_process_response <- function(data) {
 
     # Generate record name and select final columns
     result$.record_name <- generate_record_name(result)
-    dplyr::select(result, .record_name, dplyr::starts_with("."), dplyr::everything())
+    dplyr::select(
+      result,
+      .record_name,
+      dplyr::starts_with("."),
+      dplyr::everything()
+    )
   }) |>
     dplyr::bind_rows()
 }

@@ -88,9 +88,11 @@ get_articles <- function(
 
   if ("crossref" %in% sources) {
     api_tasks$crossref <- function() {
-
       ids_cf <- convert_article_id(
-        ids, to = "doi", keep_failed_conversions = FALSE)
+        ids,
+        to = "doi",
+        keep_failed_conversions = FALSE
+      )
 
       get_crossref_articles(
         ids = ids_cf,
@@ -123,7 +125,10 @@ get_articles <- function(
   if ("pubmed" %in% sources) {
     api_tasks$pubmed <- function() {
       ids_pm <- convert_article_id(
-        ids, to = "pmid", keep_failed_conversions = FALSE)
+        ids,
+        to = "pmid",
+        keep_failed_conversions = FALSE
+      )
 
       get_pubmed_articles(
         ids = ids_pm,
@@ -190,7 +195,10 @@ get_articles <- function(
           df$.ids <- vector("list", nrow(df))
           for (i in seq_len(nrow(df))) df$.ids[[i]] <- tmp[i, , drop = FALSE]
         } else {
-          df$.ids <- lapply(df$.ids, function(x) if (is.null(x)) data.frame() else x)
+          df$.ids <- lapply(
+            df$.ids,
+            function(x) if (is.null(x)) data.frame() else x
+          )
         }
       }
     } else {
@@ -215,7 +223,10 @@ get_articles <- function(
   combined_df <- dplyr::bind_rows(results_list)
 
   get_id_from_ids <- function(ids_list, id_name) {
-    purrr::map_chr(ids_list, ~ purrr::pluck(.x, id_name, 1, .default = NA_character_))
+    purrr::map_chr(
+      ids_list,
+      ~ purrr::pluck(.x, id_name, 1, .default = NA_character_)
+    )
   }
 
   # Create deduplication key by prioritizing DOI (lowercase), then PMID,
@@ -224,7 +235,8 @@ get_articles <- function(
     tolower(get_id_from_ids(combined_df$.ids, "doi")),
     get_id_from_ids(combined_df$.ids, "pmid"),
     if (".paperId" %in% names(combined_df)) combined_df$.paperId else NULL,
-    if (".record_name" %in% names(combined_df)) combined_df$.record_name else NULL
+    if (".record_name" %in% names(combined_df)) combined_df$.record_name else
+      NULL
   )
 
   combined_df$.__key__ <- dedup_key
@@ -240,7 +252,14 @@ get_articles <- function(
       ),
       # Handle list-columns that need unlisting and uniquing
       dplyr::across(
-        any_of(c(".source", ".references", ".citations", ".related", ".pubtype", ".api")),
+        any_of(c(
+          ".source",
+          ".references",
+          ".citations",
+          ".related",
+          ".pubtype",
+          ".api"
+        )),
         ~ list(unique(unlist(.x, use.names = FALSE))),
         .names = "{col}"
       ),
@@ -248,8 +267,18 @@ get_articles <- function(
       # by taking the first non-NA value.
       dplyr::across(
         !any_of(c(
-          ".source", ".references", ".citations", ".related", ".pubtype", ".api",
-          ".ids", ".__key__", "pmid", "pmcid", "openalex", "semanticscholar"
+          ".source",
+          ".references",
+          ".citations",
+          ".related",
+          ".pubtype",
+          ".api",
+          ".ids",
+          ".__key__",
+          "pmid",
+          "pmcid",
+          "openalex",
+          "semanticscholar"
         )),
         ~ dplyr::first(na.omit(.x)),
         .names = "{col}"
@@ -293,9 +322,22 @@ get_articles <- function(
 
   # Define final column order and select them
   final_col_order <- c(
-    "record_name", "paperId", "doi", "title", "abstract",
-    "authors", "year", "journal", "pubtype", "url", "is_open_access",
-    "references", "citations", "related", "ids", "source"
+    "record_name",
+    "paperId",
+    "doi",
+    "title",
+    "abstract",
+    "authors",
+    "year",
+    "journal",
+    "pubtype",
+    "url",
+    "is_open_access",
+    "references",
+    "citations",
+    "related",
+    "ids",
+    "source"
   )
 
   # Reorder columns and implicitly drop any not in the final list (like 'api')

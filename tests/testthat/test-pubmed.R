@@ -88,7 +88,11 @@ test_that("get_pubmed_articles retrieves correct article data compared to direct
   expect_equal(result$.title[1], direct_title, ignore_attr = TRUE)
   expect_equal(result$.journal[1], direct_journal, ignore_attr = TRUE)
   expect_equal(result$.year[1], direct_year, ignore_attr = TRUE)
-  expect_equal(result$.authors[1], parse_authors(direct_authors, to_string = TRUE), ignore_attr = TRUE)
+  expect_equal(
+    result$.authors[1],
+    parse_authors(direct_authors, to_string = TRUE),
+    ignore_attr = TRUE
+  )
   expect_equal(result$.pubtype[1], direct_pubtypes, ignore_attr = TRUE)
 
   # Test that the result has all expected columns
@@ -193,16 +197,24 @@ test_that("get_pubmed_linked retrieves correct linked articles compared to direc
     httr2::req_perform()
 
   # Try to parse JSON, handle potential non-JSON error responses
-  direct_content <- tryCatch({
-    httr2::resp_body_json(direct_response)
-  }, error = function(e) {
-    message("Warning: Could not parse JSON from PubMed ELink API: ", e$message)
-    NULL # Return NULL or an empty list if parsing fails
-  })
+  direct_content <- tryCatch(
+    {
+      httr2::resp_body_json(direct_response)
+    },
+    error = function(e) {
+      message(
+        "Warning: Could not parse JSON from PubMed ELink API: ",
+        e$message
+      )
+      NULL # Return NULL or an empty list if parsing fails
+    }
+  )
 
   # Ensure content is not NULL before proceeding
   if (is.null(direct_content) || is.null(direct_content$linksets)) {
-    message("Direct API call for get_pubmed_linked returned no parseable JSON or data. Expecting empty results.")
+    message(
+      "Direct API call for get_pubmed_linked returned no parseable JSON or data. Expecting empty results."
+    )
     expect_equal(nrow(linked_results$citations), 0)
     expect_equal(nrow(linked_results$references), 0)
     return(NULL) # Exit the test prematurely as the direct call failed
@@ -294,16 +306,24 @@ test_that("get_pubmed_linked handles different link types correctly with direct 
     httr2::req_perform()
 
   # Try to parse JSON, handle potential non-JSON error responses
-  direct_content <- tryCatch({
-    httr2::resp_body_json(direct_response)
-  }, error = function(e) {
-    message("Warning: Could not parse JSON from PubMed ELink API: ", e$message)
-    NULL # Return NULL or an empty list if parsing fails
-  })
+  direct_content <- tryCatch(
+    {
+      httr2::resp_body_json(direct_response)
+    },
+    error = function(e) {
+      message(
+        "Warning: Could not parse JSON from PubMed ELink API: ",
+        e$message
+      )
+      NULL # Return NULL or an empty list if parsing fails
+    }
+  )
 
   # Ensure content is not NULL before proceeding
   if (is.null(direct_content) || is.null(direct_content$linksets)) {
-    message("Direct API call for get_pubmed_linked returned no parseable JSON or data. Expecting empty results.")
+    message(
+      "Direct API call for get_pubmed_linked returned no parseable JSON or data. Expecting empty results."
+    )
     expect_equal(nrow(citations_only), 0)
     expect_equal(nrow(references_only), 0)
     expect_equal(nrow(related_only), 0)
@@ -368,7 +388,10 @@ test_that("pm_format_results correctly formats PubMed API responses compared to 
     httr2::req_perform()
 
   # Expected values (from direct XML parsing to avoid dependency on pm_format_results bugs)
-  direct_title <- xml2::xml_text(xml2::xml_find_first(xml2::read_xml(httr2::resp_body_string(direct_response_obj)), ".//ArticleTitle"))
+  direct_title <- xml2::xml_text(xml2::xml_find_first(
+    xml2::read_xml(httr2::resp_body_string(direct_response_obj)),
+    ".//ArticleTitle"
+  ))
 
   # Test pm_format_results
   result <- pm_format_results(direct_response_obj)
@@ -466,7 +489,10 @@ test_that("get_pubmed_articles returns expected structure for a query", {
   # Test with a query
   test_query <- "machine learning"
   max_results_test <- 5
-  results <- get_pubmed_articles(query = test_query, max_results = max_results_test)
+  results <- get_pubmed_articles(
+    query = test_query,
+    max_results = max_results_test
+  )
 
   # Check that results are returned and count is correct
   expect_true(nrow(results) > 0)
