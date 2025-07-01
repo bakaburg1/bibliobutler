@@ -207,22 +207,6 @@ get_articles <- function(
       }
     }
 
-    # Fill scalar identifier columns from .ids when missing
-    extract_scalar <- function(id_df, col) {
-      if (!is.null(id_df) && is.data.frame(id_df) && col %in% names(id_df)) {
-        val <- id_df[[col]][1]
-        if (!is.null(val) && !is.na(val) && val != "") return(val)
-      }
-      NA_character_
-    }
-
-    id_cols <- c("doi", "pmid", "pmcid", "openalex", "semanticscholar")
-    for (cl in id_cols) {
-      if (!cl %in% names(df)) {
-        df[[cl]] <- purrr::map_chr(df$.ids, extract_scalar, col = cl)
-      }
-    }
-
     df
   }
 
@@ -230,18 +214,17 @@ get_articles <- function(
 
   combined_df <- dplyr::bind_rows(results_list)
 
-  # Add helper to fetch column safely
-  get_col <- function(df, col) {
-    if (col %in% names(df)) df[[col]] else rep(NA_character_, nrow(df))
+  get_id_from_ids <- function(ids_list, id_name) {
+    purrr::map_chr(ids_list, ~ purrr::pluck(.x, id_name, 1, .default = NA_character_))
   }
 
   # Create deduplication key by prioritizing DOI (lowercase), then PMID,
   # then Semantic Scholar paper ID, then record name as fallback
   dedup_key <- dplyr::coalesce(
-    tolower(get_col(combined_df, "doi")),
-    get_col(combined_df, "pmid"),
-    get_col(combined_df, ".paperId"),
-    get_col(combined_df, ".record_name")
+    tolower(get_id_from_ids(combined_df$.ids, "doi")),
+    get_id_from_ids(combined_df$.ids, "pmid"),
+    if (".paperId" %in% names(combined_df)) combined_df$.paperId else NULL,
+    if (".record_name" %in% names(combined_df)) combined_df$.record_name else NULL
   )
 
   combined_df$.__key__ <- dedup_key
@@ -264,7 +247,10 @@ get_articles <- function(
       # For all other columns (that are not list columns or the key), merge them
       # by taking the first non-NA value.
       dplyr::across(
-        !any_of(c(".source", ".references", ".citations", ".related", ".pubtype", ".api", ".ids", ".__key__")),
+        !any_of(c(
+          ".source", ".references", ".citations", ".related", ".pubtype", ".api",
+          ".ids", ".__key__", "pmid", "pmcid", "openalex", "semanticscholar"
+        )),
         ~ dplyr::first(na.omit(.x)),
         .names = "{col}"
       ),
@@ -275,5 +261,44 @@ get_articles <- function(
 
   summarised_df$.record_name <- generate_record_name(summarised_df)
 
-  summarised_df
+  # Keep only dotted columns and columns shared across all back-ends.
+
+  # Identify dotted columns (those starting with a dot)
+  dotted_cols <- grep("^\\.", names(summarised_df), value = TRUE)
+
+  # Identify non-dotted columns that are present in every individual back-end
+  if (length(results_list) > 0) {
+    get_non_dotted <- function(df) names(df)[!grepl("^\\.", names(df))]
+    shared_cols <- Reduce(intersect, lapply(results_list, get_non_dotted))
+  } else {
+    shared_cols <- character(0)
+  }
+
+  # Columns to retain (unique)
+  keep_cols <- intersect(
+    unique(c(dotted_cols, shared_cols, "doi")),
+    names(summarised_df)
+  )
+  summarised_df <- summarised_df[, keep_cols, drop = FALSE]
+
+  # Rename dotted columns by stripping the leading dot
+  new_names <- sub("^\\.", "", names(summarised_df))
+  # If stripping the dot creates duplicate names, keep the first occurrence
+  dup_idx <- duplicated(new_names)
+  if (any(dup_idx)) {
+    summarised_df <- summarised_df[, !dup_idx, drop = FALSE]
+    new_names <- new_names[!dup_idx]
+  }
+  names(summarised_df) <- new_names
+
+  # Define final column order and select them
+  final_col_order <- c(
+    "record_name", "paperId", "doi", "title", "abstract",
+    "authors", "year", "journal", "pubtype", "url", "is_open_access",
+    "references", "citations", "related", "ids", "source"
+  )
+
+  # Reorder columns and implicitly drop any not in the final list (like 'api')
+  summarised_df |>
+    dplyr::select(dplyr::any_of(final_col_order))
 }
