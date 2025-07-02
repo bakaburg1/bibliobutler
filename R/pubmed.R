@@ -108,12 +108,17 @@ get_pubmed_articles <- function(
   )
 
   msg_info("Starting PubMed article retrieval...")
-
   # Input validation
-  inputs <- c(!is.null(ids), !is.null(title), !is.null(query))
+  if (is.null(ids) && is.null(title) && (is.null(query) || !nzchar(trimws(query)))) {
+    stop("A valid ID, title, or non-empty query must be provided.")
+  }
 
-  if (sum(inputs) == 0) {
-    msg_error("At least one of ids, title, or query must be provided.")
+  if (!is.null(ids) && (!is.null(title) || !is.null(query))) {
+    stop("Use only one of `ids`, `title`, or `query` as arguments.")
+  }
+
+  if (!is.null(title) && !is.null(query)) {
+    stop("Use only one of `title` or `query` as arguments.")
   }
 
   # Ensure per_page is valid (within PubMed limits)

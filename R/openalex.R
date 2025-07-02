@@ -91,8 +91,8 @@ get_openalex_articles <- function(
   if (!is.null(ids) && !is.null(query)) {
     stop("Use only one of `ids` or `query` as arguments.")
   }
-  if (is.null(ids) && is.null(query)) {
-    stop("Either `ids` or `query` must be provided.")
+  if (is.null(ids) && (is.null(query) || !nzchar(trimws(query)))) {
+    stop("A valid query must be provided when no IDs are given.")
   }
 
   # Prepare default fields

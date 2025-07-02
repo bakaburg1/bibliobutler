@@ -63,6 +63,10 @@ get_crossref_articles <- function(
     add = TRUE
   )
 
+  if (is.null(ids) && (is.null(query) || !nzchar(trimws(query)))) {
+    stop("A valid query must be provided when no IDs are given.")
+  }
+
   if (getOption("bibliobutler.dev_mode", FALSE)) {
     msg_status("🔍 DEBUG: get_crossref_articles called")
     msg_status(
