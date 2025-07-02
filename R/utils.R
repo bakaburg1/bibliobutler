@@ -527,6 +527,15 @@ safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
       " workers."
     )
 
+    # Ensure required packages for workers are installed
+    rlang::check_installed(c("pkgload", "devtools"))
+
+    # Check if we are in development mode
+    is_dev <- pkgload::is_dev_package("bibliobutler")
+    log_message(
+      "Development mode (is_dev_package): ", is_dev
+    )
+
     # Capture the unevaluated expression for logging
     f_expr <- rlang::enexpr(.f)
     log_message("Function to apply: ", rlang::expr_text(f_expr))
@@ -548,11 +557,27 @@ safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
 
       worker_log("Worker started for an item.")
 
+      # Load bibliobutler namespace based on execution context
+      if (is_dev) {
+        devtools::load_all(quiet = TRUE)
+        worker_log("Loaded bibliobutler via devtools::load_all().")
+      } else {
+        library(bibliobutler)
+        worker_log("Loaded bibliobutler via library().")
+      }
+
       # Try to execute the original function
       tryCatch(
         {
           result <- .f(...)
-          worker_log("Function executed successfully.")
+          if (is.data.frame(result)) {
+            worker_log("Function executed successfully. Rows: ", nrow(result))
+          } else {
+            worker_log(
+              "Function executed successfully. Result length: ",
+              length(result)
+            )
+          }
           return(result)
         },
         error = function(e) {
