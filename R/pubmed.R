@@ -98,45 +98,42 @@ get_pubmed_articles <- function(
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
   on.exit(
-    {
-      if (debug_mode) {
-        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status("DEBUG: Total get_pubmed_articles() time: {elapsed} s")
-      }
-    },
-    add = TRUE
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      cli::cli_alert_info("DEBUG: Total get_pubmed_articles() time: {elapsed} s")
+    }
   )
 
-  msg_info("Starting PubMed article retrieval...")
+  cli::cli_alert("Starting PubMed article retrieval...")
   # Input validation
   if (is.null(ids) && is.null(title) && (is.null(query) || !nzchar(trimws(query)))) {
-    stop("A valid ID, title, or non-empty query must be provided.")
+    cli::cli_abort("A valid ID, title, or non-empty query must be provided.")
   }
 
   if (!is.null(ids) && (!is.null(title) || !is.null(query))) {
-    stop("Use only one of `ids`, `title`, or `query` as arguments.")
+    cli::cli_abort("Use only one of `ids`, `title`, or `query` as arguments.")
   }
 
   if (!is.null(title) && !is.null(query)) {
-    stop("Use only one of `title` or `query` as arguments.")
+    cli::cli_abort("Use only one of `title` or `query` as arguments.")
   }
 
   # Ensure per_page is valid (within PubMed limits)
-  per_page <- min(max(1, per_page), 10000) # Clamped between 1 and 10000
+  per_page <- min(per_page, 10000)
 
   # Warn if per_page is very large
   if (per_page > 2000) {
-    msg_warn(
+    cli::cli_alert_warning(
       "Very large batch sizes (per_page > 2000) may result in slow responses or timeouts from PubMed API."
     )
   }
 
-  msg_status("Using batch size of {per_page} articles per request")
+  cli::cli_alert_info("Using batch size of {per_page} articles per request")
 
   if (concurrent) {
-    msg_status("Using concurrent HTTP requests")
+    cli::cli_alert_info("Using concurrent HTTP requests")
   } else {
-    msg_status("Using sequential HTTP requests")
+    cli::cli_alert_info("Using sequential HTTP requests")
   }
 
   # Base URL for E-utilities
@@ -145,18 +142,18 @@ get_pubmed_articles <- function(
 
   # If IDs are provided, ensure they're PMIDs
   if (!is.null(ids)) {
-    msg_status("Converting input IDs to PMIDs...")
+    cli::cli_alert("Converting input IDs to PMIDs...")
     ids <- convert_article_id(ids, to = "pmid")
     ids <- setdiff(ids, c(NA, "NF"))
 
     if (length(ids) == 0) {
-      msg_warn("No valid PMIDs were found after conversion.")
+      cli::cli_alert_warning("No valid PMIDs were found after conversion.")
       return(data.frame())
     }
 
     # If searching by IDs directly
     total_ids <- length(ids)
-    msg_info("Fetching {total_ids} articles by ID")
+    cli::cli_alert_info("Fetching {total_ids} articles by ID")
 
     # Determine how many batches we need
     num_batches <- ceiling(total_ids / per_page)
@@ -182,12 +179,15 @@ get_pubmed_articles <- function(
     }
 
     # Perform the requests (either in parallel or sequentially)
+    requests <- requests[!sapply(requests, is.null)]
 
-    if (concurrent && num_batches > 1) {
+    cli::cli_alert("Performing {length(requests)} batch requests...")
+
+    if (concurrent && length(requests) > 1) {
       # Use httr2's built-in concurrent request functionality
       responses <- httr2::req_perform_parallel(
         requests,
-        max_active = num_batches,
+        max_active = length(requests),
         on_error = "continue" # Use "continue" to process errors but keep going
       )
     } else {
@@ -195,18 +195,18 @@ get_pubmed_articles <- function(
     }
 
     # Process the responses
-    msg_status("Processing responses...")
+    cli::cli_alert("Processing responses...")
 
     # Process each response and combine into a single data frame
-    all_results_list <- lapply(responses, function(resp) {
+    all_results_list <- purrr::map(responses, function(resp) {
       process_batch_response(resp, include_raw)
-    })
+    }, .progress = TRUE)
 
     # Filter out empty data frames and combine results
     all_results_list <- all_results_list[sapply(all_results_list, nrow) > 0]
     all_results <- dplyr::bind_rows(all_results_list)
 
-    msg_success("Retrieved {nrow(all_results)} articles")
+    cli::cli_alert_success("Retrieved {nrow(all_results)} articles")
 
     return(all_results)
   }
@@ -219,7 +219,7 @@ get_pubmed_articles <- function(
     search_term <- query
   }
 
-  msg_status("Constructed search term: {search_term}")
+  cli::cli_alert_info("Constructed search term: {search_term}")
 
   # First search to get total count and WebEnv
   esearch_params <- list(
@@ -233,7 +233,7 @@ get_pubmed_articles <- function(
     api_key = getOption("bibliobutler.ncbi_key", NULL)
   )
 
-  msg_status("Executing PubMed search query...")
+  cli::cli_alert("Executing PubMed search query...")
   esearch_request <- create_pm_request(esearch_url, esearch_params, concurrent)
   esearch_response <- httr2::req_perform(esearch_request)
 
@@ -245,7 +245,7 @@ get_pubmed_articles <- function(
     is.null(search_content$esearchresult$count) ||
       as.numeric(search_content$esearchresult$count) == 0
   ) {
-    msg_warn("No results found in PubMed for the given query.")
+    cli::cli_alert_warning("No results found in PubMed for the given query.")
     return(data.frame())
   }
 
@@ -258,16 +258,16 @@ get_pubmed_articles <- function(
     display_count <- total_count
   }
 
-  msg_info("Total results: {total_count} for query")
+  cli::cli_alert_info("Total results: {total_count} for query")
   if (display_count < total_count) {
-    msg_info("(retrieving first {display_count} results)")
+    cli::cli_alert_info("(retrieving first {display_count} results)")
   }
 
   # Get WebEnv and QueryKey for batch retrieval
   web_env <- search_content$esearchresult$webenv
   query_key <- search_content$esearchresult$querykey
 
-  msg_status("Using WebEnv: {web_env}, QueryKey: {query_key}")
+  cli::cli_alert_info("Using WebEnv: {web_env}, QueryKey: {query_key}")
 
   # Create request objects for each batch
   num_batches <- ceiling(min(display_count, total_count) / per_page)
@@ -301,7 +301,7 @@ get_pubmed_articles <- function(
   requests <- requests[!sapply(requests, is.null)]
 
   # Perform the requests (either in parallel or sequentially)
-  msg_status("Performing {length(requests)} batch requests...")
+  cli::cli_alert("Performing {length(requests)} batch requests...")
 
   if (concurrent && length(requests) > 1) {
     # Use httr2's built-in concurrent request functionality
@@ -315,10 +315,10 @@ get_pubmed_articles <- function(
   }
 
   # Process the responses
-  msg_status("Processing responses...")
+  cli::cli_alert("Processing responses...")
 
   # Process each response and combine into a single data frame
-  all_results_list <- lapply(responses, function(resp) {
+  all_results_list <- safe_mirai_map(responses, function(resp) {
     process_batch_response(resp, include_raw)
   })
 
@@ -326,7 +326,7 @@ get_pubmed_articles <- function(
   all_results_list <- all_results_list[sapply(all_results_list, nrow) > 0]
   all_results <- dplyr::bind_rows(all_results_list)
 
-  msg_success("Fetched {nrow(all_results)} results from PubMed")
+  cli::cli_alert_success("Fetched {nrow(all_results)} results from PubMed")
 
   return(all_results)
 }
@@ -378,13 +378,10 @@ get_pubmed_linked <- function(
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
   on.exit(
-    {
-      if (debug_mode) {
-        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status("DEBUG: Total get_pubmed_linked() time: {elapsed} s")
-      }
-    },
-    add = TRUE
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      cli::cli_alert_info("DEBUG: Total get_pubmed_linked() time: {elapsed} s")
+    }
   )
 
   # Validate and select the link types
@@ -403,7 +400,7 @@ get_pubmed_linked <- function(
   }
 
   if (length(ids) == 0) {
-    msg_warn(
+    cli::cli_alert_warning(
       "No valid PMIDs were found. No results will be returned."
     )
 
@@ -452,13 +449,13 @@ get_pubmed_linked <- function(
       httr2::resp_body_json(response)
     },
     error = function(e) {
-      msg_warn("Could not parse JSON from PubMed ELink API: {e$message}")
+      cli::cli_alert_warning("Could not parse JSON from PubMed ELink API: {e$message}")
       NULL # Return NULL to indicate parsing failure
     }
   )
 
   if (is.null(content)) {
-    msg_warn(
+    cli::cli_alert_warning(
       "No parseable content received from PubMed ELink API. Returning empty results."
     )
     return(results)
@@ -533,9 +530,9 @@ pm_format_results <- function(response, include_raw = FALSE) {
   parsed <- try(xml2::read_xml(content), silent = TRUE)
 
   if (inherits(parsed, "try-error")) {
-    msg_error(
+    cli::cli_alert_danger(
       "Failed to parse XML: {attr(parsed, 'condition')$message}",
-      stop = FALSE
+      wrap = TRUE
     )
     return(data.frame())
   }
@@ -544,23 +541,21 @@ pm_format_results <- function(response, include_raw = FALSE) {
   articles <- xml2::xml_find_all(parsed, ".//PubmedArticle")
 
   if (length(articles) == 0) {
-    msg_warn("No articles found in response")
+    cli::cli_alert_warning("No articles found in response")
     return(data.frame())
   }
 
-  msg_status("Processing {length(articles)} articles...")
-
   # Process all articles at once instead of batching
   results <- purrr::map_dfr(articles, function(article) {
-    # Extract basic article info
+    # Extract PMID
     pmid <- xml2::xml_text(xml2::xml_find_first(article, ".//PMID"))
 
     # Journal info
-    journal_node <- xml2::xml_find_first(article, ".//Journal")
-    journal <- if (!is.na(journal_node)) {
+    journal_info <- xml2::xml_find_first(article, ".//Journal")
+    journal <- if (!is.na(journal_info)) {
       xml2::xml_text(
-        xml2::xml_find_first(journal_node, ".//ISOAbbreviation") %||%
-          xml2::xml_find_first(journal_node, ".//Title")
+        xml2::xml_find_first(journal_info, ".//ISOAbbreviation") %||%
+          xml2::xml_find_first(journal_info, ".//Title")
       )
     } else NA_character_
 
@@ -693,7 +688,7 @@ pm_make_request <- function(endpoint, params, method = "GET") {
     )
 
   if (getOption("bibliobutler.dev_mode", TRUE)) {
-    msg_status("Requesting url: {req$url}")
+    cli::cli_alert_info("Requesting url: {req$url}")
   }
 
   # Perform the request
@@ -765,22 +760,20 @@ process_batch_response <- function(response, include_raw = FALSE) {
   # Check if the response is an error object (httr2_perform_parallel returns
   # errors as objects)
   if (inherits(response, "error") || inherits(response, "httr2_http_")) {
-    msg_error("API error: {conditionMessage(response)}", stop = FALSE)
+    cli::cli_alert_danger("API error: {conditionMessage(response)}")
     return(data.frame())
   }
 
   if (httr2::resp_status(response) >= 400) {
-    msg_error("API error: HTTP {httr2::resp_status(response)}", stop = FALSE)
+    cli::cli_alert_danger("API error: HTTP {httr2::resp_status(response)}")
     return(data.frame())
   }
 
   batch_results <- try(pm_format_results(response, include_raw), silent = TRUE)
 
   if (inherits(batch_results, "try-error")) {
-    msg_error(
-      "Failed to process batch: {attr(batch_results, 'condition')$message}",
-      stop = FALSE
-    )
+    cli::cli_alert_danger(
+      "Failed to process batch: {attr(batch_results, 'condition')$message}")
     return(data.frame())
   }
 

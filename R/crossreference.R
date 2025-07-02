@@ -54,13 +54,12 @@ get_crossref_articles <- function(
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
   on.exit(
-    {
-      if (debug_mode) {
-        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status("DEBUG: Total get_crossref_articles() time: {elapsed} s")
-      }
-    },
-    add = TRUE
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      cli::cli_alert_info(
+        "DEBUG: Total get_crossref_articles() time: {elapsed} s"
+      )
+    }
   )
 
   if (is.null(ids) && (is.null(query) || !nzchar(trimws(query)))) {
@@ -68,12 +67,12 @@ get_crossref_articles <- function(
   }
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: get_crossref_articles called")
-    msg_status(
+    cli::cli_alert_info("🔍 DEBUG: get_crossref_articles called")
+    cli::cli_alert_info(
       "🔍 DEBUG: ids = {if(is.null(ids)) 'NULL' else paste(head(ids, 3), collapse=', ')}"
     )
-    msg_status("🔍 DEBUG: query = {if(is.null(query)) 'NULL' else query}")
-    msg_status("🔍 DEBUG: max_results = {max_results}")
+    cli::cli_alert_info("🔍 DEBUG: query = {if(is.null(query)) 'NULL' else query}")
+    cli::cli_alert_info("🔍 DEBUG: max_results = {max_results}")
   }
 
   if (!is.null(ids) && !is.null(query)) {
@@ -122,28 +121,28 @@ get_crossref_articles <- function(
   # If DOIs are provided, fetch each work individually
   if (!is.null(ids)) {
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Processing {length(ids)} DOIs")
+      cli::cli_alert_info("🔍 DEBUG: Processing {length(ids)} DOIs")
     }
 
     valid_ids <- cr_prepare_ids(ids)
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Valid IDs after preparation: {length(valid_ids)}")
-      msg_status(
+      cli::cli_alert_info("🔍 DEBUG: Valid IDs after preparation: {length(valid_ids)}")
+      cli::cli_alert_info(
         "🔍 DEBUG: Sample valid IDs: {paste(head(valid_ids, 3), collapse=', ')}"
       )
     }
 
     # Create a list of request objects
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Creating request objects...")
+      cli::cli_alert_info("🔍 DEBUG: Creating request objects...")
     }
 
     reqs <- purrr::map(valid_ids, function(doi) {
       url <- sprintf("%s/%s", base_url, utils::URLencode(doi, reserved = TRUE))
       if (getOption("bibliobutler.dev_mode", FALSE)) {
-        msg_status("🔍 DEBUG: Creating request for DOI: {doi}")
-        msg_status("🔍 DEBUG: Request URL: {url}")
+        cli::cli_alert_info("🔍 DEBUG: Creating request for DOI: {doi}")
+        cli::cli_alert_info("🔍 DEBUG: Request URL: {url}")
       }
       # NOTE: Individual DOI endpoints don't support the select parameter
       # Only pass select_str for search queries, not individual DOI fetches
@@ -151,62 +150,59 @@ get_crossref_articles <- function(
     })
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Created {length(reqs)} request objects")
+      cli::cli_alert_info("🔍 DEBUG: Created {length(reqs)} request objects")
     }
 
-    msg_status("Fetching {length(reqs)} Crossref records in parallel...")
+    cli::cli_alert("Starting Crossref article retrieval...")
 
     # Perform requests in parallel
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Starting httr2::req_perform_parallel...")
+      cli::cli_alert_info("🔍 DEBUG: Starting httr2::req_perform_parallel...")
     }
 
     resps <- httr2::req_perform_parallel(reqs, on_error = "continue")
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Parallel requests completed")
-      msg_status("🔍 DEBUG: Number of responses: {length(resps)}")
-      msg_status(
+      cli::cli_alert_info("🔍 DEBUG: Parallel requests completed")
+      cli::cli_alert_info("🔍 DEBUG: Number of responses: {length(resps)}")
+      cli::cli_alert_info(
         "🔍 DEBUG: Response types: {paste(sapply(resps, class), collapse=', ')}"
       )
     }
 
-    # Process the responses
-    if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Processing responses...")
-    }
-
+    # Process responses to extract works
+    cli::cli_alert("Processing responses...")
     results_list <- purrr::map(resps, function(resp) {
       if (inherits(resp, "httr2_response")) {
         if (getOption("bibliobutler.dev_mode", FALSE)) {
-          msg_status("🔍 DEBUG: Processing successful response")
+          cli::cli_alert_info("🔍 DEBUG: Processing successful response")
         }
         # The actual response body is JSON, which needs to be parsed
         json_resp <- httr2::resp_body_json(resp, simplifyVector = FALSE)
         if (is.null(json_resp$message)) {
           # Log or warn about missing data
           doi <- sub(".*/", "", resp$url) #
-          msg_warn("No data returned for DOI: {doi}")
+          cli::cli_alert_warning("No data returned for DOI: {doi}")
           return(NULL)
         }
         result <- cr_process_response(json_resp)
         if (getOption("bibliobutler.dev_mode", FALSE)) {
-          msg_status("🔍 DEBUG: Processed response, got {nrow(result)} rows")
+          cli::cli_alert_info("🔍 DEBUG: Processed response, got {nrow(result)} rows")
         }
         return(result)
       } else {
         # This was an error object
         if (getOption("bibliobutler.dev_mode", FALSE)) {
-          msg_status("🔍 DEBUG: Processing error response: {class(resp)}")
+          cli::cli_alert_info("🔍 DEBUG: Processing error response: {class(resp)}")
         }
-        msg_warn("Failed to fetch a DOI: {conditionMessage(resp)}")
+        cli::cli_alert_warning("Failed to fetch a DOI: {conditionMessage(resp)}")
         return(NULL)
       }
     })
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Processed all responses")
-      msg_status(
+      cli::cli_alert_info("🔍 DEBUG: Processed all responses")
+      cli::cli_alert_info(
         "🔍 DEBUG: Non-null results: {sum(!sapply(results_list, is.null))}"
       )
     }
@@ -214,18 +210,18 @@ get_crossref_articles <- function(
     results <- dplyr::bind_rows(results_list)
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Combined results: {nrow(results)} rows")
+      cli::cli_alert_info("🔍 DEBUG: Combined results: {nrow(results)} rows")
     }
 
     # Trim to max_results if necessary
     results <- head(results, max_results)
-    msg_success("Fetched {nrow(results)} Crossref records by DOI.")
+    cli::cli_alert_success("Fetched {nrow(results)} Crossref records by DOI.")
     return(results)
   }
 
   # Else, perform a search query
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: Processing search query: {query}")
+    cli::cli_alert_info("🔍 DEBUG: Processing search query: {query}")
   }
 
   # Build query parameters
@@ -260,17 +256,17 @@ get_crossref_articles <- function(
   }
 
   # First call to get total results count
-  msg_status("Querying Crossref for articles matching: {query}")
+  cli::cli_alert_info("Querying Crossref for articles matching: {query}")
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: Making first API call to get count...")
+    cli::cli_alert_info("🔍 DEBUG: Initial query to get total results...")
   }
 
   resp <- cr_make_api_call(base_url, query = query_params)
   total_results <- resp$message$`total-results`
-  msg_info("Total results: {total_results} for query")
+  cli::cli_alert_info("Total results: {total_results} for query")
   if (total_results > max_results) {
-    msg_info("(retrieving first {max_results} results)")
+    cli::cli_alert_info("(retrieving first {max_results} results)")
   }
 
   # Initialize results list with first page
@@ -280,7 +276,7 @@ get_crossref_articles <- function(
 
   # Process first page
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: Processing first page...")
+    cli::cli_alert_info("🔍 DEBUG: Processing first page...")
   }
 
   first_page_results <- cr_process_response(resp)
@@ -288,7 +284,7 @@ get_crossref_articles <- function(
   results_count <- results_count + length(resp$message$items)
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status(
+    cli::cli_alert_info(
       "🔍 DEBUG: First page processed: {nrow(first_page_results)} results"
     )
   }
@@ -310,10 +306,10 @@ get_crossref_articles <- function(
     # If no more results are needed, break the loop
     if (query_params$rows <= 0) break
 
-    msg_status("Fetching page {current_page} with cursor")
+    cli::cli_alert("Fetching page {current_page} with cursor")
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status("🔍 DEBUG: Fetching page {current_page}...")
+      cli::cli_alert_info("🔍 DEBUG: Fetching page {current_page}...")
     }
 
     resp <- cr_make_api_call(base_url, query = query_params)
@@ -326,7 +322,7 @@ get_crossref_articles <- function(
     results_count <- results_count + length(resp$message$items)
 
     if (getOption("bibliobutler.dev_mode", FALSE)) {
-      msg_status(
+      cli::cli_alert_info(
         "🔍 DEBUG: Page {current_page} processed: {nrow(page_results)} results"
       )
     }
@@ -334,10 +330,10 @@ get_crossref_articles <- function(
 
   results <- dplyr::bind_rows(results_pages)
   results <- head(results, max_results)
-  msg_success("Fetched {nrow(results)} Crossref records by query.")
+  cli::cli_alert_success("Fetched {nrow(results)} Crossref records by query.")
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: Final results: {nrow(results)} rows")
+    cli::cli_alert_info("🔍 DEBUG: Final results: {nrow(results)} rows")
   }
 
   return(results)
@@ -377,13 +373,10 @@ get_crossref_linked <- function(
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
   on.exit(
-    {
-      if (debug_mode) {
-        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status("DEBUG: Total get_crossref_linked() time: {elapsed} s")
-      }
-    },
-    add = TRUE
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      cli::cli_alert_info("DEBUG: Total get_crossref_linked() time: {elapsed} s")
+    }
   )
 
   # Check for empty input first
@@ -402,7 +395,7 @@ get_crossref_linked <- function(
   links <- match.arg(links, choices = c("references"), several.ok = TRUE)
 
   if (any(!links %in% "references")) {
-    msg_warn(
+    cli::cli_alert_warning(
       "Crossref API supports only retrieval of references. Other link types are not available."
     )
   }
@@ -422,7 +415,7 @@ get_crossref_linked <- function(
     stop("No valid IDs provided.")
   }
 
-  msg_status("Fetching Crossref metadata for {length(valid_ids)} DOIs")
+  cli::cli_alert("Fetching Crossref metadata for {length(valid_ids)} DOIs")
 
   # Try to get the articles
   works_df <- tryCatch(
@@ -430,13 +423,13 @@ get_crossref_linked <- function(
       get_crossref_articles(ids = valid_ids, fields = c("DOI", "reference"))
     },
     error = function(e) {
-      msg_error("Error fetching Crossref metadata: {conditionMessage(e)}")
+      cli::cli_abort("Error fetching Crossref metadata: {conditionMessage(e)}")
       return(data.frame())
     }
   )
 
   if (nrow(works_df) == 0) {
-    msg_error("No matching works found in Crossref for these IDs.")
+    cli::cli_abort("No matching works found in Crossref for these IDs.")
     return(out)
   }
 
@@ -487,7 +480,7 @@ get_crossref_linked <- function(
   }
 
   out$references <- all_refs
-  msg_success(
+  cli::cli_alert_success(
     "Retrieved references for {length(unique(out$references$source_id))} works."
   )
   return(out)
@@ -544,7 +537,7 @@ cr_make_api_call <- function(
   }
 
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("Requesting Crossref URL: {req$url}")
+    cli::cli_alert_info("Requesting Crossref URL: {req$url}")
   }
 
   if (as_req) {
@@ -677,7 +670,7 @@ cr_process_response <- function(resp) {
         },
         error = function(e) {
           # If processing fails, return NULL so we can filter it out
-          msg_warn("Error processing item {i}: {conditionMessage(e)}")
+          cli::cli_alert_warning("Error processing item {i}: {conditionMessage(e)}")
           NULL
         }
       )

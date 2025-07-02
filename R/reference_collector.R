@@ -251,17 +251,8 @@ convert_article_id <- function(
         converted_id = converted_ids,
         stringsAsFactors = FALSE
       )
-    },
-    get_semanticscholar_articles = get_semanticscholar_articles,
-    get_openalex_articles = get_openalex_articles,
-    pm_make_request = pm_make_request,
-    remove_url_from_id = remove_url_from_id
+    }
   )
-
-  # Collect asynchronous results when running with parallel workers
-  if (length(results_list) && inherits(results_list[[1]], "mirai")) {
-    results_list <- purrr::map(results_list, `[]`)
-  }
 
   results <- dplyr::bind_rows(results_list)
 

@@ -143,7 +143,7 @@ get_openalex_articles <- function(
         as.numeric(Sys.time() - fetch_start, units = "secs"),
         2
       )
-      msg_status("DEBUG: Fetch step (ids/query) took {fetch_time} s")
+      cli::cli_alert_info("DEBUG: Fetch step (ids/query) took {fetch_time} s")
     }
   } else {
     if (debug_mode) fetch_start <- Sys.time()
@@ -160,13 +160,13 @@ get_openalex_articles <- function(
         as.numeric(Sys.time() - fetch_start, units = "secs"),
         2
       )
-      msg_status("DEBUG: Fetch step (ids/query) took {fetch_time} s")
+      cli::cli_alert_info("DEBUG: Fetch step (ids/query) took {fetch_time} s")
     }
   }
 
   # Process and standardize the response
   if (debug_mode) {
-    msg_status("🔍 DEBUG: Raw results before processing: {nrow(results)} rows")
+    cli::cli_alert_info("🔍 DEBUG: Raw results before processing: {nrow(results)} rows")
   }
 
   if (debug_mode) proc_start <- Sys.time()
@@ -175,14 +175,14 @@ get_openalex_articles <- function(
 
   if (debug_mode) {
     proc_time <- round(as.numeric(Sys.time() - proc_start, units = "secs"), 2)
-    msg_status("DEBUG: Processing step took {proc_time} s")
-    msg_status("🔍 DEBUG: Processed results: {nrow(output)} rows")
+    cli::cli_alert_info("DEBUG: Processing step took {proc_time} s")
+    cli::cli_alert_info("🔍 DEBUG: Processed results: {nrow(output)} rows")
   }
 
   if (nrow(output) == 0) {
-    msg_warn("No OpenAlex results found for the given input.")
+    cli::cli_alert_warning("No OpenAlex results found for the given input.")
   } else {
-    msg_success("Fetched {nrow(output)} results from OpenAlex")
+    cli::cli_alert_success("Fetched {nrow(output)} results from OpenAlex")
   }
 
   # -------------------------------------------------------------
@@ -193,7 +193,7 @@ get_openalex_articles <- function(
       as.numeric(Sys.time() - overall_start, units = "secs"),
       2
     )
-    msg_status("DEBUG: Total get_openalex_articles() time: {total_time} s")
+    cli::cli_alert_info("DEBUG: Total get_openalex_articles() time: {total_time} s")
   }
 
   output$.record_name <- generate_record_name(output)
@@ -255,13 +255,10 @@ get_openalex_linked <- function(
   debug_mode <- isTRUE(getOption("bibliobutler.dev_mode", FALSE))
   if (debug_mode) func_start <- Sys.time()
   on.exit(
-    {
-      if (debug_mode) {
-        elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status("DEBUG: Total get_openalex_linked() time: {elapsed} s")
-      }
-    },
-    add = TRUE
+    if (debug_mode) {
+      elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
+      cli::cli_alert_info("DEBUG: Total get_openalex_linked() time: {elapsed} s")
+    }
   )
 
   links <- match.arg(links, several.ok = TRUE)
@@ -291,7 +288,7 @@ get_openalex_linked <- function(
     related = data.frame()
   )
 
-  msg_status("Fetching general article data for {length(ids)} IDs")
+  cli::cli_alert("Fetching general article data for {length(ids)} IDs")
 
   # Fetch the works themselves to get references and related works
   works_df <- get_openalex_articles(
@@ -300,7 +297,7 @@ get_openalex_linked <- function(
   )
 
   if (nrow(works_df) == 0) {
-    msg_error("No matching works found in OpenAlex for these IDs.")
+    cli::cli_abort("No matching works found in OpenAlex for these IDs.")
     return(out)
   }
 
@@ -322,7 +319,7 @@ get_openalex_linked <- function(
     # Create filter for works that cite any of our IDs
     cites_filter <- paste(openalex_ids, collapse = "|")
 
-    msg_status("Fetching citations for {length(openalex_ids)} IDs")
+    cli::cli_alert("Fetching citations for {length(openalex_ids)} IDs")
 
     citations_df <- oa_fetch_by_query(
       query = NULL,
@@ -378,10 +375,10 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
   # Prepare and validate IDs
   prepared_ids <- oa_prepare_ids(ids)
 
-  msg_info("Total results: {length(prepared_ids)} for ID query")
+  cli::cli_alert_info("Total results: {length(prepared_ids)} for ID query")
 
   if (length(prepared_ids) > max_results) {
-    msg_info("(retrieving first {max_results} results)")
+    cli::cli_alert_info("(retrieving first {max_results} results)")
     prepared_ids <- head(prepared_ids, max_results)
   }
 
@@ -404,7 +401,7 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
 
   # Check if every id vector is <=50 → single call path
   if (all(purrr::map_int(ids_by_type, ~ length(.x)) <= 50)) {
-    msg_status("Using single OpenAlex call (<=50 ids per attribute)")
+    cli::cli_alert("Using single OpenAlex call (<=50 ids per attribute)")
     query_params <- make_query(ids_by_type)
     resp <- oa_make_api_call(
       "https://api.openalex.org/works",
@@ -445,7 +442,7 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
   # Drop NULL (if some chunks had no ids)
   batch_list <- batch_list[!purrr::map_lgl(batch_list, ~ is.null(.x))]
 
-  msg_status("Fetching {length(batch_list)} OpenAlex ID batches in parallel…")
+  cli::cli_alert("Fetching {length(batch_list)} OpenAlex ID batches in parallel…")
 
   # Create request objects
   reqs <- purrr::map(
@@ -473,7 +470,7 @@ oa_fetch_by_ids <- function(ids, select_param, filters, per_page, max_results) {
         if (is.data.frame(dat$results)) {
           return(dat$results)
         } else {
-          return(as.data.frame(dat$results, stringsAsFactors = FALSE))
+          return(as.data.frame(dat$results))
         }
       }
     }
@@ -530,20 +527,20 @@ oa_fetch_by_query <- function(
   )
 
   total_count <- count_resp$meta$count %||% 0
-  msg_info("Total results: {total_count} for search query")
+  cli::cli_alert_info("Total results: {total_count} for search query")
 
   if (total_count == 0) {
     return(data.frame())
   }
 
   if (total_count > max_results) {
-    msg_info("(retrieving first {max_results} results)")
+    cli::cli_alert_info("(retrieving first {max_results} results)")
     total_count <- max_results
   }
 
   # Calculate number of pages needed
   pages_needed <- ceiling(total_count / per_page)
-  msg_status("Fetching {pages_needed} pages of OpenAlex results")
+  cli::cli_alert("Fetching {pages_needed} pages of OpenAlex results")
 
   # For small queries, use sequential processing to avoid overhead
   if (pages_needed <= 3) {
@@ -620,7 +617,7 @@ oa_fetch_by_query <- function(
           return(as.data.frame(json_resp$results))
         }
       } else {
-        msg_warn("Failed to fetch a page: {conditionMessage(resp)}")
+        cli::cli_alert_warning("Failed to fetch a page: {conditionMessage(resp)}")
       }
       return(data.frame())
     })
@@ -676,10 +673,10 @@ oa_make_api_call <- function(
 
   # Debug: print request details
   if (getOption("bibliobutler.dev_mode", FALSE)) {
-    msg_status("🔍 DEBUG: URL: {url}")
-    msg_status("🔍 DEBUG: User-Agent: {user_agent}")
+    cli::cli_alert_info("🔍 DEBUG: URL: {url}")
+    cli::cli_alert_info("🔍 DEBUG: User-Agent: {user_agent}")
     if (!is.null(query)) {
-      msg_status(
+      cli::cli_alert_info(
         "🔍 DEBUG: Query params: {paste(names(query), query, sep='=', collapse=', ')}"
       )
     }

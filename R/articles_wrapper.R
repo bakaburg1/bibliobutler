@@ -176,7 +176,7 @@ get_articles <- function(
   results_list <- purrr::keep(results_list, ~ is.data.frame(.x) && nrow(.x) > 0)
 
   if (length(results_list) == 0) {
-    msg_warn("No results returned by the selected sources.")
+    cli::cli_alert_warning("No results returned by the selected sources.")
     return(data.frame())
   }
 

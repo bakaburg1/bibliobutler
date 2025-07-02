@@ -496,24 +496,7 @@ remove_url_from_id <- function(ids) {
 safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
   # Logging setup
 
-  # Use a filesystem-safe timestamp (no spaces or colons) so that the
-  # `file()` call succeeds on all operating systems.
-  timestamp <- format(Sys.time(), "%Y-%m-%d_%H-%M-%OS3")
-
-  # Ensure that the logs directory exists.
-  dir.create("logs", showWarnings = FALSE)
-
-  log_file <- file.path("logs", paste0("mirai_log_", timestamp, ".txt"))
-
-  log_message <- function(...) {
-    write(
-      sprintf("[%s] %s", Sys.time(), paste0(...)),
-      file = log_file,
-      append = TRUE
-    )
-  }
-
-  log_message("safe_mirai_map called.")
+  cli::cli_alert_info("safe_mirai_map called.")
 
   # Check if any daemons are available (named or default)
   current_daemons <- mirai::daemons()
@@ -521,49 +504,50 @@ safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
 
   if (daemons_available) {
     # parallel branch
-    log_message(
+    cli::cli_alert_info(
       "Executing in parallel with ",
       current_daemons$connections,
       " workers."
     )
+
+    # Create a unique directory for this run's worker logs in the temp folder
+    timestamp <- format(Sys.time(), "%Y-%m-%d_%H-%M-%OS3")
+    log_dir <- file.path(tempdir(), paste0("mirai_run_", timestamp))
+    dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
+
+    if (getOption("bibliobutler.dev_mode", FALSE)) {
+      cli::cli_alert_info("Worker logs for this run are being stored in: {.path {log_dir}}")
+    }
 
     # Ensure required packages for workers are installed
     rlang::check_installed(c("pkgload", "devtools"))
 
     # Check if we are in development mode
     is_dev <- pkgload::is_dev_package("bibliobutler")
-    log_message(
+    cli::cli_alert_info(
       "Development mode (is_dev_package): ", is_dev
     )
-
-    # Capture the unevaluated expression for logging
-    f_expr <- rlang::enexpr(.f)
-    log_message("Function to apply: ", rlang::expr_text(f_expr))
 
     # Add logging wrapper to the function
     .f_logged <- function(...) {
       # This part executes on the worker
-      worker_log_file <- file.path(
-        "logs",
-        paste0("worker_", Sys.getpid(), "_", timestamp, ".txt")
-      )
-      worker_log <- function(...) {
-        write(
-          sprintf("[%s] %s", Sys.time(), paste0(...)),
-          file = worker_log_file,
-          append = TRUE
-        )
-      }
+      worker_log_file <- file.path(log_dir, paste0("worker_", Sys.getpid(), ".log"))
+      log_conn <- file(worker_log_file, open = "wt")
+      sink(log_conn, type = "message")
+      on.exit({
+        sink(type = "message")
+        close(log_conn)
+      }, add = TRUE)
 
-      worker_log("Worker started for an item.")
+      cli::cli_alert_info("Worker started for an item.")
 
       # Load bibliobutler namespace based on execution context
       if (is_dev) {
         devtools::load_all(quiet = TRUE)
-        worker_log("Loaded bibliobutler via devtools::load_all().")
+        cli::cli_alert_info("Loaded bibliobutler via devtools::load_all().")
       } else {
         library(bibliobutler)
-        worker_log("Loaded bibliobutler via library().")
+        cli::cli_alert_info("Loaded bibliobutler via library().")
       }
 
       # Try to execute the original function
@@ -571,19 +555,15 @@ safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
         {
           result <- .f(...)
           if (is.data.frame(result)) {
-            worker_log("Function executed successfully. Rows: ", nrow(result))
+            cli::cli_alert_success("Function executed successfully. Rows: {nrow(result)}")
           } else {
-            worker_log(
-              "Function executed successfully. Result length: ",
-              length(result)
-            )
+            cli::cli_alert_success("Function executed successfully. Result length: {length(result)}")
           }
           return(result)
         },
         error = function(e) {
-          worker_log("!!! ERROR in worker: ", conditionMessage(e))
-          worker_log(
-            "Backtrace: ",
+          cli::cli_alert_danger("!!! ERROR in worker: {conditionMessage(e)}")
+          cli::cli_alert_info(
             paste(capture.output(rlang::trace_back()), collapse = "\n")
           )
           # Re-throw the error so mirai can see it
@@ -592,13 +572,19 @@ safe_mirai_map <- function(.x, .f, ..., .args = list(), .promise = NULL) {
       )
     }
 
-    mirai::mirai_map(.x, .f_logged, ..., .args = .args, .promise = .promise)
+    mirai::mirai_map(
+      .x,
+      .f_logged,
+      ...,
+      .args = .args,
+      .promise = .promise
+    )[mirai::.progress]
   } else {
     # sequential branch
-    log_message("Executing sequentially.")
+    cli::cli_alert_info("Executing sequentially.")
     # When no daemons are present, just use purrr::map sequentially.
     # The ... arguments are forwarded to .f.
-    purrr::map(.x, .f, ...)
+    purrr::map(.x, .f, ..., .progress = "Processing sequentially")
   }
 }
 
@@ -642,13 +628,13 @@ enable_parallel <- function(workers = parallel::detectCores() - 1) {
   if (current_daemons$daemons > 0) {
     # Stop existing daemons if any
     mirai::daemons(0)
-    msg_info("Stopped existing {current_daemons$daemons} workers")
+    cli::cli_alert_info("Stopped existing {current_daemons$daemons} workers")
   }
 
   # Start new daemons
   mirai::daemons(workers)
 
-  msg_success("Enabled parallel processing with {workers} workers")
+  cli::cli_alert_success("Enabled parallel processing with {workers} workers")
 
   invisible(workers)
 }
@@ -673,12 +659,12 @@ disable_parallel <- function() {
   current_daemons <- mirai::daemons()
   if (current_daemons$daemons > 0) {
     mirai::daemons(0)
-    msg_success(
+    cli::cli_alert_success(
       "Disabled parallel processing ({current_daemons$daemons} workers stopped)"
     )
     invisible(TRUE)
   } else {
-    msg_info("No parallel workers were running")
+    cli::cli_alert_info("No parallel workers were running")
     invisible(FALSE)
   }
 }

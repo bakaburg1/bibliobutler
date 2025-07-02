@@ -76,7 +76,7 @@ get_semanticscholar_articles <- function(
     {
       if (debug_mode) {
         elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status(
+        cli::cli_alert_info(
           "DEBUG: Total get_semanticscholar_articles() time: {elapsed} s"
         )
       }
@@ -87,10 +87,10 @@ get_semanticscholar_articles <- function(
   # Input validation: ensure only one of ids or query is provided
 
   if (!is.null(ids) && !is.null(query)) {
-    stop("Use only one of `ids` or `query` as arguments")
+    cli::cli_abort("Use only one of `ids` or `query` as arguments")
   }
   if (is.null(ids) && (is.null(query) || !nzchar(trimws(query)))) {
-    stop("A valid query must be provided when no IDs are given.")
+    cli::cli_abort("A valid query must be provided when no IDs are given.")
   }
 
   # Define default fields and combine with user-specified fields
@@ -120,7 +120,7 @@ get_semanticscholar_articles <- function(
   # Process IDs if provided
   if (!is.null(ids)) {
     if (!is.null(filters) || !is.null(year_filter)) {
-      msg_warn("Filters and year_filter are ignored when using IDs")
+      cli::cli_alert_warning("Filters and year_filter are ignored when using IDs")
     }
 
     valid_ids <- s2_prepare_ids(ids)
@@ -139,7 +139,7 @@ get_semanticscholar_articles <- function(
       )
     })
 
-    msg_status(
+    cli::cli_alert(
       "Fetching {length(reqs)} Semantic Scholar batches in parallel..."
     )
     # Perform requests in parallel
@@ -153,7 +153,7 @@ get_semanticscholar_articles <- function(
         s2_process_response(json_resp)
       } else {
         # This was an error object
-        msg_warn("Failed to fetch a batch: {conditionMessage(resp)}")
+        cli::cli_alert_warning("Failed to fetch a batch: {conditionMessage(resp)}")
         return(data.frame())
       }
     })
@@ -173,7 +173,7 @@ get_semanticscholar_articles <- function(
     if (!is.null(filters)) {
       # Validate that filters is a list
       if (!is.list(filters)) {
-        stop("Filters must be a list")
+        cli::cli_abort("Filters must be a list")
       }
 
       # Append all filters to query_data with proper prefix
@@ -186,7 +186,7 @@ get_semanticscholar_articles <- function(
     # Add year_filter if provided (overrides any year filter)
     if (!is.null(year_filter)) {
       if (!is.null(filters$year)) {
-        msg_warn("year_filter overrides 'year' in filters argument")
+        cli::cli_alert_warning("year_filter overrides 'year' in filters argument")
       }
       query_data$year <- year_filter
     }
@@ -194,20 +194,19 @@ get_semanticscholar_articles <- function(
     all_results <- data.frame()
     token <- NULL
     page <- 1
-    print_total <- TRUE
-
-    # Fetch results in batches until max_results is reached or no more results.
-    # Bulk search returns 1000 results per page and next page token to fetch
-    # the next page. Parallelization is not possible AFAIK.
+    total_pages <- NA
 
     # Fetch results in batches using pagination token until max_results is
     # reached or no more results are available
     repeat {
+      cli::cli_progress_step(
+        "Fetching page {page}{if (!is.na(total_pages)) paste0('/', total_pages) else ''}"
+      )
+
       # Add pagination token to query if available from previous request
       if (!is.null(token)) {
         query_data$token <- token
       }
-
       # Make API call to get batch of results
       batch_results <- s2_make_api_call(
         endpoint,
@@ -216,38 +215,26 @@ get_semanticscholar_articles <- function(
       )
 
       # Append batch results to accumulated results
-      all_results <- bind_rows(all_results, batch_results$data)
+      all_results <- dplyr::bind_rows(all_results, batch_results$data)
 
       # Get token for next page
       token <- batch_results$token
 
-      total_pages <- ceiling(min(max_results, batch_results$total) / 1000)
-
-      # Print total results count on first page
-      if (print_total) {
-        print_total <- FALSE
-        msg_info("Total results: {batch_results$total} for query")
+      if (page == 1) {
+        total_pages <- ceiling(min(max_results, batch_results$total) / 1000)
+        cli::cli_alert_info("Total results: {batch_results$total} for query")
         if (batch_results$total > max_results) {
-          msg_info("(retrieving first {max_results} results)")
+          cli::cli_alert_info("(retrieving first {max_results} results)")
         }
-        msg_status("Fetching {total_pages} pages of Semantic Scholar results")
       }
-
-      # Show progress message for current page
-      msg_status(
-        "[{page} / {total_pages}]",
-        appendLF = FALSE
-      )
 
       page <- page + 1
 
       # Break if no more pages or max results reached
       if (is.null(token) || nrow(all_results) >= max_results) {
-        cat("\n") # Add newline after page counter message
+        cli::cli_progress_done()
         break
       }
-
-      cat("\r") # Reset page counter message
     }
 
     # Trim results to max_results and process into standard format
@@ -255,7 +242,7 @@ get_semanticscholar_articles <- function(
       head(max_results) |>
       s2_process_response()
 
-    msg_success("Fetched {nrow(all_results)} results from Semantic Scholar")
+    cli::cli_alert_success("Fetched {nrow(all_results)} results from Semantic Scholar")
   }
 
   if (nrow(all_results) == 0) {
@@ -315,7 +302,7 @@ get_semanticscholar_linked <- function(
     {
       if (debug_mode) {
         elapsed <- round(as.numeric(Sys.time() - func_start, units = "secs"), 2)
-        msg_status(
+        cli::cli_alert_info(
           "DEBUG: Total get_semanticscholar_linked() time: {elapsed} s"
         )
       }
@@ -335,15 +322,15 @@ get_semanticscholar_linked <- function(
 
   # Return early if no IDs provided
   if (length(ids) == 0) {
-    msg_warn("No IDs passed")
+    cli::cli_alert_warning("No IDs passed")
     return(results)
   }
 
   # Validate IDs and warn about any invalid ones
   id_types <- get_article_id_type(ids)
   if (any(is.na(id_types))) {
-    msg_warn("Some IDs are not valid:")
-    msg_warn(ids[is.na(id_types)])
+    cli::cli_alert_warning("Some IDs are not valid:")
+    cli::cli_alert_warning(ids[is.na(id_types)])
   }
 
   # Keep only valid IDs for processing
@@ -351,7 +338,7 @@ get_semanticscholar_linked <- function(
 
   # Return early if no valid IDs remain
   if (length(ids) == 0) {
-    msg_warn("No valid IDs passed")
+    cli::cli_alert_warning("No valid IDs passed")
     return(results)
   }
 
@@ -364,7 +351,7 @@ get_semanticscholar_linked <- function(
     )[links] |>
       purrr::discard(is.na)
 
-    msg_status(
+    cli::cli_alert(
       "Fetching {paste(names(fields), collapse = \" and \")} ",
       "for {length(ids)} IDs"
     )
@@ -377,7 +364,7 @@ get_semanticscholar_linked <- function(
 
     # Return early if no articles found
     if (nrow(article_data) == 0) {
-      msg_warn("No articles found for the given IDs")
+      cli::cli_alert_warning("No articles found for the given IDs")
       return(results)
     }
 
@@ -412,7 +399,7 @@ get_semanticscholar_linked <- function(
 
   # Process related papers if requested using recommendations API
   if ("related" %in% links) {
-    msg_status("Fetching related papers for {length(ids)} IDs")
+    cli::cli_alert("Fetching related papers for {length(ids)} IDs")
 
     endpoint <- "https://api.semanticscholar.org/recommendations/v1/papers"
 
@@ -494,7 +481,7 @@ s2_prepare_ids <- function(ids) {
 
   # Return early if no valid IDs are passed
   if (length(valid_ids) == 0) {
-    msg_warn("No valid IDs passed")
+    cli::cli_alert_warning("No valid IDs passed")
 
     return(character())
   }
@@ -521,7 +508,7 @@ s2_prepare_ids <- function(ids) {
   valid_ids <- setdiff(valid_ids, c(NA, "DOI:NF"))
 
   if (length(valid_ids) == 0) {
-    msg_warn("No valid IDs after conversion.")
+    cli::cli_alert_warning("No valid IDs after conversion.")
   }
 
   valid_ids
@@ -755,7 +742,7 @@ s2_make_api_call <- function(
   }
 
   if (getOption("bibliobutler.dev_mode")) {
-    msg_status("Requesting url: {req$url}")
+    cli::cli_alert_info("Requesting url: {req$url}")
   }
 
   if (as_req) {
